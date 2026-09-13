@@ -1,6 +1,14 @@
-__pycache__/ 
-*.pyc 
-.DS_Store 
+__pycache__/
+*.pyc
+.DS_Store
 dist/
-prompt.txt
-tutorials/prompt.txt
+
+# Data and results are symlinked to off-repository storage; see README.
+/data
+/results
+
+# Pixi-managed environment (pixi.lock is committed; the env itself is not).
+.pixi/
+
+# Snakemake's own run metadata.
+.snakemake/

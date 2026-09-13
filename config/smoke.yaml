@@ -1,0 +1,9 @@
+# Smoke-test overrides: layered on top of config.yaml with
+#   snakemake --configfile config/config.yaml config/smoke.yaml
+# Restricts the simulated-transitions target to one variant so `pixi run
+# smoke` completes in well under 5 minutes on CPU, and disables the
+# manuscript datasets entirely (no download attempted).
+simulated_transitions:
+  variants: [fast]
+
+smoke: true

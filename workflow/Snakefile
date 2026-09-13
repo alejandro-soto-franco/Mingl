@@ -1,0 +1,36 @@
+"""Mingl reproduction workflow.
+
+Two target groups:
+
+  * `all` (the default target) -- the simulated-transitions parity pipeline.
+    It needs no download: its input is the small, in-repo,
+    deterministically generated fixture at tests/fixtures/simulated_transitions
+    (the exact stored output of the deleted SyntheticGradientTest*.ipynb
+    notebooks), so it is this repository's only fully reproducible manuscript
+    reproduction. `config/smoke.yaml` shrinks it to one variant.
+
+  * The manuscript-figure rules (intestine, melanoma, esophagus) are defined
+    against their documented sources but are not part of `all`, because
+    their raw data does not ship with this repository (see README's
+    "Data availability" section) -- request them explicitly, e.g.:
+        snakemake --cores 6 results/intestine/neighborhood/adata.h5ad
+    which will attempt `download_intestine` first.
+"""
+
+from pathlib import Path
+
+configfile: "config/config.yaml"
+
+RESULTS = Path(config["paths"]["results_dir"])
+DATA = Path(config["paths"]["data_dir"])
+FIXTURES = Path(config["simulated_transitions"]["fixture_dir"])
+VARIANTS = config["simulated_transitions"]["variants"]
+
+include: "rules/simulated_transitions.smk"
+include: "rules/manuscript_figures.smk"
+
+
+rule all:
+    input:
+        expand(str(RESULTS / "simulated_transitions" / "{variant}" / "parity.json"), variant=VARIANTS),
+        expand(str(RESULTS / "simulated_transitions" / "{variant}" / "figure.pdf"), variant=VARIANTS),
