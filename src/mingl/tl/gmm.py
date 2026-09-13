@@ -1,12 +1,15 @@
 import math
+import warnings
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, Sequence
 
 import anndata as ad
 import numpy as np
 import pandas as pd
 
 from .knn2 import KNN2
+
+_DEFAULT_THRESHOLD = 0.25
 
 
 def _compute_probability_batch(
@@ -28,11 +31,7 @@ def _compute_probability_batch(
         safe_stds = np.where(zero_std_mask, 1.0, stds)
 
         with np.errstate(divide="ignore", invalid="ignore", over="ignore", under="ignore"):
-            pdf = (
-                1.0
-                / (safe_stds * math.sqrt(2 * math.pi))
-                * np.exp(-0.5 * ((cell_values - means) / safe_stds) ** 2)
-            )
+            pdf = 1.0 / (safe_stds * math.sqrt(2 * math.pi)) * np.exp(-0.5 * ((cell_values - means) / safe_stds) ** 2)
 
         exact_match_mask = cell_values == means
         pdf = np.where(zero_std_mask & exact_match_mask, 1.0, pdf)
@@ -69,10 +68,11 @@ def cpu_gmm_probability(
     region_key: str = "unique_region",
     ks: Sequence[int] = (10, 20, 100, 300),
     k: int = 10,
-    threshold: float = 0.25,
-    num_processes: Optional[int] = None,
+    threshold: float = _DEFAULT_THRESHOLD,
+    num_processes: int | None = None,
     prob_key: str = "neighborhood_probabilities",
     prob_variable_key: str = "neighborhood_probability_neighborhoods",
+    copy: bool = False,
 ) -> ad.AnnData:
     """
     Calculate per-cell neighborhood membership probabilities on CPU.
@@ -81,7 +81,25 @@ def cpu_gmm_probability(
     evaluation instead of shipping the full window table to a separate process
     for every cell. This keeps the default path safe on Windows while still
     allowing optional parallel workers for users who want them.
+
+    Parameters
+    ----------
+    threshold
+        Deprecated and unused. Neighbourhood-probability thresholding happens
+        downstream, in :func:`mingl.tl.findPositives`. Passing a non-default
+        value raises a :class:`DeprecationWarning` and has no effect.
+    copy
+        When ``True``, operate on and return a copy of ``CELLS_ADATA`` instead
+        of mutating it in place.
     """
+    if threshold != _DEFAULT_THRESHOLD:
+        warnings.warn(
+            "`threshold` is deprecated and no longer used by cpu_gmm_probability; "
+            "neighbourhood-probability thresholding now happens downstream, in "
+            "`findPositives`. This parameter will be removed in a future release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     del threshold  # retained for API compatibility
 
     if num_processes is not None and num_processes < 1:
@@ -90,6 +108,9 @@ def cpu_gmm_probability(
     if neighborhood_col not in CELLS_ADATA.obs or cluster_col not in CELLS_ADATA.obs:
         raise KeyError(f"One or more required columns ({neighborhood_col}, {cluster_col}) are missing in obs.")
 
+    if copy:
+        CELLS_ADATA = CELLS_ADATA.copy()
+
     windows = KNN2(CELLS_ADATA, cluster_col=cluster_col, region_key=region_key, ks=ks)
     if k not in windows:
         raise ValueError(f"k={k} not in available ks from KNN2: {list(windows.keys())}")
@@ -97,7 +118,12 @@ def cpu_gmm_probability(
     windows_k = windows[k].copy()
     windows_k[cluster_col] = CELLS_ADATA.obs[cluster_col].values
 
-    cell_type_features = list(pd.Index(CELLS_ADATA.obs[cluster_col]).unique())
+    # KNN2's window columns are always strings (it strips a "{cluster_col}__"
+    # prefix off pandas get_dummies() column names), so cell_type_features
+    # must be strings too: indexing windows_k below with the raw obs values
+    # would otherwise raise whenever cluster_col holds a non-string dtype
+    # (integer cell-type ids, for example).
+    cell_type_features = list(pd.Index(CELLS_ADATA.obs[cluster_col].astype(str)).unique())
     centroid_df = CENTROIDS_ADATA.to_df()
 
     mean_cols = [f"{cell_type}_mean" for cell_type in cell_type_features]
@@ -113,15 +139,9 @@ def cpu_gmm_probability(
         preview = ", ".join(map(str, missing_window_cols[:10]))
         raise ValueError(f"Missing KNN window columns for cell types: {preview}")
 
-    window_values = np.ascontiguousarray(
-        windows_k.loc[:, cell_type_features].to_numpy(dtype=np.float64, copy=False)
-    )
-    centroid_means = np.ascontiguousarray(
-        centroid_df.loc[:, mean_cols].to_numpy(dtype=np.float64, copy=False)
-    )
-    centroid_stds = np.ascontiguousarray(
-        centroid_df.loc[:, std_cols].to_numpy(dtype=np.float64, copy=False)
-    )
+    window_values = np.ascontiguousarray(windows_k.loc[:, cell_type_features].to_numpy(dtype=np.float64, copy=False))
+    centroid_means = np.ascontiguousarray(centroid_df.loc[:, mean_cols].to_numpy(dtype=np.float64, copy=False))
+    centroid_stds = np.ascontiguousarray(centroid_df.loc[:, std_cols].to_numpy(dtype=np.float64, copy=False))
     neighborhood_names = centroid_df.index.tolist()
 
     n_cells = window_values.shape[0]

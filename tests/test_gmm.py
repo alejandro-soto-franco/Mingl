@@ -1,6 +1,7 @@
 import anndata as ad
 import numpy as np
 import pandas as pd
+import pytest
 
 import mingl.tl.gmm as gmm
 
@@ -55,11 +56,7 @@ def _old_scalar_probability(cell_row: np.ndarray, centroid_means: np.ndarray, ce
             if std == 0:
                 feature_probability = 1.0 if value == mean else 0.0
             else:
-                feature_probability = (
-                    1.0
-                    / (std * np.sqrt(2 * np.pi))
-                    * np.exp(-0.5 * ((value - mean) / std) ** 2)
-                )
+                feature_probability = 1.0 / (std * np.sqrt(2 * np.pi)) * np.exp(-0.5 * ((value - mean) / std) ** 2)
 
             total_probability *= feature_probability
 
@@ -123,6 +120,71 @@ def test_cpu_gmm_probability_parallel_workers_match_single_worker(monkeypatch):
     )
 
 
+def test_cpu_gmm_probability_default_threshold_is_silent(monkeypatch, recwarn):
+    cells = _make_cells_adata()
+    centroids = _make_centroids_adata()
+    monkeypatch.setattr(gmm, "KNN2", lambda *args, **kwargs: _mock_knn2_result(cells))
+
+    gmm.cpu_gmm_probability(CELLS_ADATA=cells, CENTROIDS_ADATA=centroids, ks=(10,), k=10)
+
+    assert not any(issubclass(w.category, DeprecationWarning) for w in recwarn.list)
+
+
+def test_cpu_gmm_probability_nondefault_threshold_warns(monkeypatch):
+    cells = _make_cells_adata()
+    centroids = _make_centroids_adata()
+    monkeypatch.setattr(gmm, "KNN2", lambda *args, **kwargs: _mock_knn2_result(cells))
+
+    with pytest.deprecated_call():
+        gmm.cpu_gmm_probability(CELLS_ADATA=cells, CENTROIDS_ADATA=centroids, ks=(10,), k=10, threshold=0.9)
+
+
+def test_cpu_gmm_probability_copy_leaves_input_untouched(monkeypatch):
+    cells = _make_cells_adata()
+    centroids = _make_centroids_adata()
+    monkeypatch.setattr(gmm, "KNN2", lambda *args, **kwargs: _mock_knn2_result(cells))
+
+    result = gmm.cpu_gmm_probability(CELLS_ADATA=cells, CENTROIDS_ADATA=centroids, ks=(10,), k=10, copy=True)
+
+    assert result is not cells
+    assert "neighborhood_probabilities" not in cells.obsm
+    assert "neighborhood_probabilities" in result.obsm
+
+
+def test_cpu_gmm_probability_default_mutates_in_place(monkeypatch):
+    cells = _make_cells_adata()
+    centroids = _make_centroids_adata()
+    monkeypatch.setattr(gmm, "KNN2", lambda *args, **kwargs: _mock_knn2_result(cells))
+
+    result = gmm.cpu_gmm_probability(CELLS_ADATA=cells, CENTROIDS_ADATA=centroids, ks=(10,), k=10)
+
+    assert result is cells
+    assert "neighborhood_probabilities" in cells.obsm
+
+
+def test_cpu_gmm_probability_accepts_integer_cluster_labels(monkeypatch):
+    """cell_type_features must be coerced to strings: KNN2's window columns
+    are always strings, so an integer cluster_col used to raise a
+    ValueError ("Missing KNN window columns")."""
+    cells = _make_cells_adata()
+    cells.obs["cell_type"] = pd.Categorical([1, 2, 1])  # int labels instead of "T"/"B"
+    centroids = _make_centroids_adata()
+    centroids.var_names = ["1_mean", "2_mean", "1_std", "2_std"]
+
+    def _mock_knn2_int(*args, **kwargs):
+        return {
+            10: pd.DataFrame(
+                {"1": [1.0, 0.0, 1.0], "2": [0.0, 1.0, 0.0]},
+                index=cells.obs_names,
+            )
+        }
+
+    monkeypatch.setattr(gmm, "KNN2", _mock_knn2_int)
+
+    result = gmm.cpu_gmm_probability(CELLS_ADATA=cells, CENTROIDS_ADATA=centroids, ks=(10,), k=10)
+    assert result.obsm["neighborhood_probabilities"].shape == (3, 2)
+
+
 def test_batched_probability_kernel_matches_old_scalar_math():
     window_batch = np.array(
         [
@@ -148,10 +210,7 @@ def test_batched_probability_kernel_matches_old_scalar_math():
     )
 
     expected = np.vstack(
-        [
-            _old_scalar_probability(cell_row, centroid_means, centroid_stds)
-            for cell_row in window_batch
-        ]
+        [_old_scalar_probability(cell_row, centroid_means, centroid_stds) for cell_row in window_batch]
     )
     observed = gmm._compute_probability_batch(window_batch, centroid_means, centroid_stds)
 
