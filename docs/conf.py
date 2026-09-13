@@ -88,7 +88,10 @@ myst_enable_extensions = [
 ]
 myst_url_schemes = ("http", "https", "mailto")
 nb_output_stderr = "remove"
-nb_execution_mode = "off"
+# The example page executes on every docs build (it is small, synthetic and
+# has no external dependency); "cache" re-executes only when its content
+# changes rather than on every build.
+nb_execution_mode = "cache"
 nb_merge_streams = True
 typehints_defaults = "braces"
 always_use_bars_union = True  # use `|` instead of `Union` in types even when building with Python ≤3.14
