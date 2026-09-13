@@ -31,37 +31,16 @@ from mingl.tl.gmm import cpu_gmm_probability
 def _load_cells(
     raw_csv: str, *, x_key: str, y_key: str, region_key: str, cluster_col: str, neighborhood_col: str
 ) -> ad.AnnData:
+    """Read only the columns this run needs, as category dtype where useful.
+
+    Missing-label handling (a cell with no cluster/neighbourhood/region
+    value) and non-contiguous-index safety are `centroid_Calculation`'s and
+    `KNN2`'s own concerns now (see src/mingl/tl/centroids.py, knn2.py); this
+    script stays a thin loader.
+    """
     usecols = [x_key, y_key, region_key, cluster_col, neighborhood_col]
     dtype = {region_key: "category", cluster_col: "category", neighborhood_col: "category"}
     df = pd.read_csv(raw_csv, usecols=usecols, dtype=dtype)
-
-    # A cell missing its cluster or neighbourhood label cannot contribute a
-    # centroid or be scored against one; left in, a NaN neighbourhood name
-    # becomes a NaN column name when probabilities are copied into .obs
-    # below, which anndata's h5ad writer rejects outright. Drop them instead
-    # of silently coercing NaN to a string category.
-    n_before = len(df)
-    df = df.dropna(subset=[cluster_col, neighborhood_col, region_key])
-    n_dropped = n_before - len(df)
-    if n_dropped:
-        print(f"Dropped {n_dropped} of {n_before} cells missing {cluster_col!r}/{neighborhood_col!r}/{region_key!r}.")
-        # KNN2 uses obs.index labels as positions into a plain numpy array
-        # built from the same obs (values = adata.obs[sum_cols].to_numpy()),
-        # so it silently assumes a contiguous 0..n-1 index. dropna() keeps
-        # the original (now non-contiguous, and no longer 0..n-1) labels,
-        # which raised "index ... out of bounds" once a surviving row's
-        # original position exceeded the post-drop row count.
-        df = df.reset_index(drop=True)
-
-    # KNN2 groups by region_key with pandas' default observed=False, which
-    # yields an (empty) group for every category the dtype still lists even
-    # after the dropna above -- but adata.obs[region_key].unique() only
-    # returns categories with actual rows. That mismatch made KNN2 raise
-    # "<region> is not in list" for any region left with zero cells. Drop the
-    # now-unused categories so both agree on which regions exist.
-    for col in (region_key, cluster_col, neighborhood_col):
-        df[col] = df[col].cat.remove_unused_categories()
-
     df[x_key] = df[x_key].astype(np.float32)
     df[y_key] = df[y_key].astype(np.float32)
     empty_x = np.zeros((df.shape[0], 0), dtype=np.float32)
@@ -115,6 +94,12 @@ def main() -> None:
     # read per-neighbourhood probability columns from .obs, not .obsm.
     names = list(result.uns["neighborhood_probability_neighborhoods"])
     result.obs[names] = result.obsm["neighborhood_probabilities"]
+
+    # Keep the centroid table itself (not just the probabilities scored
+    # against it): it is the one number the deleted notebooks stored that is
+    # directly, exactly comparable -- see tests/test_parity.py and README's
+    # parity table.
+    result.uns["neighborhood_centroids"] = centroids
 
     result.write_h5ad(args.output)
 

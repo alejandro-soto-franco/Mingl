@@ -42,10 +42,32 @@ rule verify_intestine_source:
         """
 
 
+rule intestine_filtered_source:
+    """Reconstruct the notebooks' filtered cell universe, once.
+
+    Every other intestine_* rule reads this instead of the raw local_path,
+    so fig2/fig3/fig4 (and fig6) all operate on the same reconstructed
+    2,512,185-cell set the notebooks' own stored output size (2,512,002)
+    approximates -- not each rule silently filtering (or not) by whichever
+    column it happens to need.
+    """
+    input:
+        raw=_INTESTINE_SOURCE["local_path"],
+        verified=str(RESULTS / "intestine" / ".source_verified"),
+    output:
+        filtered=str(RESULTS / "intestine" / "filtered_source.csv"),
+    params:
+        filter_col=_INTESTINE_SOURCE["reconstructed_filter_col"],
+    shell:
+        r"""
+        nice -n 19 {_LOCK_CMD}python workflow/scripts/filter_intestine_source.py \
+            --raw-csv {input.raw} --output {output.filtered} --filter-col "{params.filter_col}"
+        """
+
+
 rule intestine_neighborhood:
     input:
-        raw_csv=_INTESTINE_SOURCE["local_path"],
-        verified=str(RESULTS / "intestine" / ".source_verified"),
+        raw_csv=str(RESULTS / "intestine" / "filtered_source.csv"),
     output:
         adata=str(RESULTS / "intestine" / "neighborhood" / "adata.h5ad"),
     params:
@@ -64,8 +86,7 @@ rule intestine_neighborhood:
 
 rule intestine_tissue_unit:
     input:
-        raw_csv=_INTESTINE_SOURCE["local_path"],
-        verified=str(RESULTS / "intestine" / ".source_verified"),
+        raw_csv=str(RESULTS / "intestine" / "filtered_source.csv"),
     output:
         adata=str(RESULTS / "intestine" / "tissue_unit" / "adata.h5ad"),
     params:
@@ -84,8 +105,7 @@ rule intestine_tissue_unit:
 
 rule intestine_community:
     input:
-        raw_csv=_INTESTINE_SOURCE["local_path"],
-        verified=str(RESULTS / "intestine" / ".source_verified"),
+        raw_csv=str(RESULTS / "intestine" / "filtered_source.csv"),
     output:
         adata=str(RESULTS / "intestine" / "community" / "adata.h5ad"),
     params:
@@ -124,6 +144,68 @@ rule intestine_networks:
         threshold=config["datasets"]["intestine"]["neighborhood"]["threshold"],
     script:
         "../scripts/run_intestine_networks.py"
+
+
+_N_SWEEP = config["datasets"]["intestine"]["n_neighborhood_sweep"]
+_N_FULL_RANGE = list(range(_N_SWEEP["full_n_range"][0], _N_SWEEP["full_n_range"][1]))
+
+
+rule intestine_n_neighborhood_windows:
+    """fig6, stage 1: compute the k=10 composition window once.
+
+    Every candidate cluster count in the sweep reclusters this SAME cached
+    matrix; recomputing a KNN2 pass per n would repeat the one genuinely
+    expensive, real-data-scale step for no reason.
+    """
+    input:
+        raw_csv=str(RESULTS / "intestine" / "filtered_source.csv"),
+    output:
+        windows=str(RESULTS / "intestine" / "n_neighborhood" / "windows.h5ad"),
+    params:
+        cfg=_N_SWEEP,
+    threads: 6
+    shell:
+        r"""
+        nice -n 19 {_LOCK_CMD}python workflow/scripts/compute_n_neighborhood_windows.py \
+            --raw-csv {input.raw_csv} --output {output.windows} \
+            --cluster-col "{params.cfg[cluster_col]}" --region-key "{params.cfg[region_key]}" \
+            --x-key {params.cfg[x_key]} --y-key {params.cfg[y_key]} --k {params.cfg[k]}
+        """
+
+
+rule intestine_n_neighborhood_cluster:
+    """fig6, stage 2: one job per candidate cluster count n.
+
+    Defined across the notebook's full sweep (config's full_n_range, 1..50)
+    so the DAG has one job per n regardless of which are requested; a
+    resumed run only recomputes n{...}.json files that do not exist yet.
+    Reads the cached window from stage 1, not the raw CSV, so it needs no
+    lock and is well under the 30-minute-per-computation limit even at
+    real scale.
+    """
+    input:
+        windows=str(RESULTS / "intestine" / "n_neighborhood" / "windows.h5ad"),
+    output:
+        summary=str(RESULTS / "intestine" / "n_neighborhood" / "n{n}.json"),
+    wildcard_constraints:
+        n=r"\d+",
+    shell:
+        r"""
+        nice -n 19 python workflow/scripts/run_n_neighborhood_cluster.py \
+            --windows {input.windows} --output {output.summary} --n {wildcards.n}
+        """
+
+
+rule intestine_n_neighborhood_selected:
+    """Convenience target: just the notebook's own selected n=6/17/28."""
+    input:
+        expand(str(RESULTS / "intestine" / "n_neighborhood" / "n{n}.json"), n=_N_SWEEP["selected_n"]),
+
+
+rule intestine_n_neighborhood_full_sweep:
+    """The complete 1..50 sweep, defined but not requested by any default target."""
+    input:
+        expand(str(RESULTS / "intestine" / "n_neighborhood" / "n{n}.json"), n=_N_FULL_RANGE),
 
 
 rule download_melanoma:

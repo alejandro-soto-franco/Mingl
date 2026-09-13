@@ -66,6 +66,10 @@ datasets:
       # lives on your machine (this file may be large and shared with other
       # workflows; nothing about that is specific to this repository).
       local_path: "data/raw/intestine/23_09_CODEX_HuBMAP_alldata_Dryad_merged.csv"
+      # The notebooks' own stored output reports 2,512,002 cells; this file
+      # has 2,603,217. Dropping rows missing this column is the closest
+      # reconstruction found (2,512,185 cells, 183 away); see README.
+      reconstructed_filter_col: "Tissue Unit"
     # ks is a single value per tier, not the notebooks' own (10, 20, 100, 300)
     # for every tier: KNN2 queries n_neighbors=max(ks) per cell across all
     # 2.6M cells, so requesting 300 neighbours to use only k=10 (as the
@@ -102,13 +106,23 @@ datasets:
     # One region used by the manuscript for a single-region gradient figure
     # (formerly gb()'s hardcoded default; now explicit here only).
     example_region_value: "B006_Descending - Sigmoid"
+    # fig6: run_mingl_over_n_clusters re-clusters the same k=10 composition
+    # window at every candidate cluster count. full_n_range is the complete
+    # sweep the notebook ran (1..50, exclusive end); this DAG defines a job
+    # per n across that whole range, but selected_n -- the three cluster
+    # counts the notebook's own elbow/plateau selection actually used,
+    # N=6/17/28, per fig6_intestine_n_neighborhood.md -- is what this
+    # session's `pixi run all`-equivalent actually requests, since a
+    # 2.6M-cell KMeans+GMM pass per n makes the full sweep a multi-hour,
+    # not a 30-minute, undertaking. See README.
     n_neighborhood_sweep:
       cluster_col: "Cell Type"
       region_key: "unique_region"
       x_key: "x"
       y_key: "y"
       k: 10
-      n_range: [1, 51]
+      full_n_range: [1, 51]
+      selected_n: [6, 17, 28]
 
   melanoma:
     source:
