@@ -47,14 +47,19 @@ pixi run all         # the full DAG on real data (see "Data availability" below)
 
 `pixi run all` reproduces the simulated-transitions sweep end to end
 (`results/simulated_transitions/{fast,medium,slow}/`); it does not attempt
-the intestine, melanoma or esophagus figures, because their source data does
-not ship with this repository. Ask for one of those explicitly once its raw
-file is in place under `data/<name>/raw.csv` (or let the `download_*` rule
-fetch it, once `config.yaml`'s `sha256` field for that dataset is filled in
-from a successful download; see below):
+the intestine, melanoma or esophagus figures, since melanoma and esophagus
+data does not ship with this repository, and the intestine file, when
+present, is large enough that requesting it by name is more deliberate than
+folding it into the default target. Once `config.yaml`'s
+`datasets.intestine.source.local_path` points at a real file (see "Data
+availability" below), ask for its figures explicitly:
 
 ```bash
-pixi run snakemake --cores 6 results/intestine/neighborhood/adata.h5ad
+pixi run snakemake --cores 6 \
+    results/intestine/neighborhood/adata.h5ad \
+    results/intestine/tissue_unit/adata.h5ad \
+    results/intestine/community/adata.h5ad \
+    results/intestine/networks/summary.json
 ```
 
 ### Workflow DAG
@@ -69,9 +74,13 @@ flowchart TD
     end
 
     subgraph "Manuscript figures (on request, not in `all`)"
-        dl_int[download_intestine] --> int_n[intestine_neighborhood]
-        dl_int --> int_tu[intestine_tissue_unit]
-        dl_int --> int_comm[intestine_community]
+        int_raw["config.yaml local_path\n(place or symlink the file yourself)"] --> verify[verify_intestine_source]
+        verify --> int_n[intestine_neighborhood]
+        verify --> int_tu[intestine_tissue_unit]
+        verify --> int_comm[intestine_community]
+        int_n --> int_net[intestine_networks]
+        int_tu --> int_net
+        int_comm --> int_net
         dl_mel[download_melanoma] --> mel_n[melanoma_neighborhood]
         eso_raw["data/esophagus/raw.csv\n(place manually, no public source found)"] --> eso_n[esophagus_neighborhood]
     end
@@ -88,34 +97,66 @@ restricts the simulated-transitions target to one variant.
 
 ## Data availability
 
-None of the manuscript's three real datasets ship with this repository.
-
 | Dataset | Best-attested public source | Status |
 |---|---|---|
-| Intestine (Hickey et al. 2023, *Nature*; HuBMAP CODEX) | Dryad [10.5061/dryad.pk0p2ngrf](https://doi.org/10.5061/dryad.pk0p2ngrf), `23_09_CODEX_HuBMAP_alldata_Dryad_merged.csv` (2.9 GB) | Identity confirmed (dataset title matches); download blocked from this machine, see below |
-| Melanoma | Dryad [10.5061/dryad.k0p2ngfcc](https://doi.org/10.5061/dryad.k0p2ngfcc), `23_10_11_Melanoma_Marker_Cell_Neighborhood.csv` (5.0 GB) | Identity confirmed (filename matches the notebook's exactly); download blocked, see below |
+| Intestine (Hickey et al. 2023, *Nature*; HuBMAP CODEX) | Dryad [10.5061/dryad.pk0p2ngrf](https://doi.org/10.5061/dryad.pk0p2ngrf), `23_09_CODEX_HuBMAP_alldata_Dryad_merged.csv` (2.9 GB) | Obtained (browser-authenticated download); SHA-256-pinned in `config.yaml`; the `intestine_*` rules run on it |
+| Melanoma | Dryad [10.5061/dryad.k0p2ngfcc](https://doi.org/10.5061/dryad.k0p2ngfcc), `23_10_11_Melanoma_Marker_Cell_Neighborhood.csv` (5.0 GB) | Identity confirmed (filename matches the notebook's exactly); manual download only, see below |
 | Esophagus (Barrett's progression) | Not identified | No URL, DOI or portal reference exists anywhere in the deleted notebooks; only the local filename `all_regions_from_h5mu.csv`. Place a file at `data/esophagus/raw.csv` to run `esophagus_neighborhood`. |
 
-**Download status for the two Dryad datasets:** their file identity was
-confirmed via Dryad's own API (`GET /api/v2/datasets/doi:...` returns each
-dataset's title and file listing, matching the manuscript exactly), and
-those file listings are public. Dryad's actual file download endpoints
-(`/api/v2/files/<id>/download` and the legacy `/downloads/file_stream/<id>`)
-returned `401`/`403` to unauthenticated programmatic requests from this
-machine: an AWS WAF challenge on the download endpoint specifically, distinct
-from the dataset pages themselves. `workflow/scripts/fetch_dataset.py`
-implements the download + SHA-256 verification the `download_intestine`/
-`download_melanoma` rules expect; running it from a browser-authenticated
-session, or with Dryad API credentials, should succeed where this session's
-plain HTTPS request did not. Once a file downloads successfully, copy the
-SHA-256 it prints into `config.yaml`'s `sha256` field for that dataset.
+**Manual download for melanoma:** Dryad's file identity was confirmed via
+its own API (`GET /api/v2/datasets/doi:...` returns each dataset's title and
+file listing, matching the manuscript exactly), and that listing is public,
+but Dryad's actual file download endpoints (`/api/v2/files/<id>/download`
+and the legacy `/downloads/file_stream/<id>`) sit behind an AWS WAF
+challenge that returns `401`/`403` to unauthenticated programmatic requests
+and cannot be scripted around. Download it through a browser, place it at
+`data/melanoma/raw.csv`, compute its SHA-256, and put that in `config.yaml`;
+`melanoma_neighborhood` then runs the same pipeline as the intestine rules.
+The intestine file above was obtained the same way.
 
-Given this, the workflow's only obtainable-here data this session is the
-in-repo `tests/fixtures/simulated_transitions/` fixture: the exact stored
-output of the deleted `SyntheticGradientTest{Fast,Medium,Slow}.ipynb`
-notebooks (seed=42, `k=10`, per `FunctionsSimulator.ipynb`). It is what
-`pixi run smoke` and `pixi run all` actually execute, and what the parity
-table below compares against.
+**Where the intestine file goes:** `config.yaml`'s
+`datasets.intestine.source.local_path` is a relative path,
+`data/raw/intestine/23_09_CODEX_HuBMAP_alldata_Dryad_merged.csv`; `data/` is
+gitignored (see below), so put the real file there yourself, or symlink it
+in from wherever it actually lives (this file may be large and shared with
+other workflows on your machine; nothing about that is specific to this
+repository). If it is shared with concurrent workflows, set `lock_path` in
+config (or the `MINGL_LOCK_PATH` environment variable) to a lock file and
+every rule that reads it wraps its command in `flock` around that path;
+unset (the default), rules run unlocked, which is correct for a single-user
+checkout or CI.
+
+**Row count does not match the deleted notebooks exactly.** The Dryad file
+has 2,603,217 cells; the notebooks' own stored output
+(`AnnData ... n_obs × n_vars = 2512002 × 0`, in
+`fig2_intestine_tissue_unit.md`) has 2,512,002, about 3.6% fewer. The
+notebooks' AnnData also has columns absent from the Dryad file entirely
+(`first_index`, `neigh_name`, `neigh_sub1`, `Preservation_method`), so the
+notebooks read a further-processed local copy (donor metadata merged in,
+some filter applied) rather than this file directly; that processing step
+happened upstream of the tutorials and is not recoverable from anything this
+repository or the deleted notebooks contain. The Dryad file is still the
+right, confirmed-identity public source: its columns and `unique_region`
+values (`B004_Ascending`, `B006_Descending - Sigmoid`, ...) match exactly,
+and it already has the manuscript's own precomputed `Neighborhood`/`Community`/
+`Tissue Unit` assignments, needing no derivation step of its own. Real
+computation on it is real, sourced analysis on a confirmed-identity file; it
+is just not a bit-exact match for the notebooks' own copy. See the parity
+table below.
+
+A cell missing its `Tissue Unit` label (a real, biological gap: not every
+cell sits within the mucosa/submucosa/muscularis segmentation) cannot
+contribute to or be scored against a tissue-unit centroid, so
+`intestine_tissue_unit` drops it. After dropping, its cell count is
+2,512,185, 183 cells (0.007%) away from the notebook's own 2,512,002 for
+this exact stage. That is far closer than the raw file's 3.6% gap, and is
+itself evidence for what the notebooks' extra filtering mostly did.
+
+The in-repo `tests/fixtures/simulated_transitions/` fixture remains this
+workflow's only bit-exact parity target: the deleted
+`SyntheticGradientTest{Fast,Medium,Slow}.ipynb` notebooks' own stored output
+(seed=42, `k=10`, per `FunctionsSimulator.ipynb`). It is what
+`pixi run smoke` and `pixi run all` execute by default.
 
 ## Parity with the notebooks
 
@@ -137,6 +178,36 @@ which have no directly comparable stored numeric output beyond figures) is
 recorded outside this repository; see the "Differences from upstream"
 section for what those notebooks actually computed and could not be
 independently re-run against.
+
+### Real intestine results (fig2, fig3, fig4)
+
+`intestine_neighborhood`, `intestine_tissue_unit`, `intestine_community` and
+`intestine_networks` have all run on the real, confirmed-identity Dryad
+file (see "Data availability"). These are not bit-exact parity against the
+notebooks (see the row-count discussion above), but they are real
+computation on real data, not a synthetic stand-in:
+
+| Level | Cells scored | Groups | Border cells (≥2 memberships above 0.25) |
+|---|---|---|---|
+| Neighbourhood (`Cell Type` → `Neighborhood`, k=10) | 2,603,217 | 20 | 311,899 (12.0%) |
+| Community (`Neighborhood` → `Community`, k=100) | 2,603,217 | 10 | 189,559 (7.3%) |
+| Tissue unit (`Community` → `Tissue Unit`, k=300) | 2,512,185 | 4 (Mucosa, Submucosa, Muscularis mucosa, Muscularis externa) | 290,190 (11.5%) |
+
+`intestine_networks` (fig3) built each level's top-15 neighbourhood-pair
+interaction graph from these; the strongest pairs are biologically
+sensible pairings the manuscript itself groups together, for example
+"Microvasculature ⟷ Macrovasculature" and "Innervated Smooth Muscle ⟷
+Smooth Muscle" at the neighbourhood level. Full output:
+`results/intestine/networks/summary.json`.
+
+fig6 (`n_neighborhood` sweep over cluster counts 1-50) stays out of scope
+this round: it reclusters all cells at up to 50 different cluster counts,
+each a KMeans fit plus a batched Gaussian-likelihood evaluation over 2.6M
+cells, exceeding this machine's 30-minute-per-computation limit at real
+scale; a smaller subset would also change what the sweep's own cluster-count
+selection (the notebook picked N=6, 17, 28) means. `tl/n_neighbors.py`'s
+functions remain unchanged and directly callable; a future session can add
+the rule once a feasible scale is chosen.
 
 ## Differences from upstream
 
