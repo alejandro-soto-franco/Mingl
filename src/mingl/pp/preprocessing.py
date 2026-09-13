@@ -1,10 +1,11 @@
 from pathlib import Path
-from typing import Union
+
 import anndata as ad
 import numpy as np
 import pandas as pd
 
-def read_file(path: Union[str, Path]) -> ad.AnnData:
+
+def read_file(path: str | Path) -> ad.AnnData:
     """
     Read a .csv or .h5ad file and return an AnnData object.
 
@@ -39,16 +40,6 @@ def read_file(path: Union[str, Path]) -> ad.AnnData:
 
     elif ext == ".h5ad":
         return ad.read_h5ad(path)
-   
+
     else:
         raise ValueError(f"Unsupported file type: {ext}. Expected .csv or .h5ad")
-    
-    '''
-    elif ext == ".h5mu":
-        mdata = mu.read(path)
-        mod = list(mdata.mod.keys())[0]
-        adata = mdata.mod[mod]
-        if "cellid" not in adata.obs.columns:
-            adata.obs["cellid"] = adata.obs_names.astype(str)
-        return adata
-    '''

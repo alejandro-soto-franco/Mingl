@@ -1,14 +1,10 @@
-
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from tqdm import tqdm
-from scipy.stats import norm
 from sklearn.cluster import MiniBatchKMeans
 from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import MiniBatchKMeans
-import matplotlib.pyplot as plt
-import anndata as ad
+from tqdm import tqdm
+
 
 def run_mingl_over_n_clusters(
     adata,
@@ -56,12 +52,8 @@ def run_mingl_over_n_clusters(
             )
         df_centroids = pd.DataFrame(centroids).set_index("Neighborhood")
 
-        means = np.array(
-            df_centroids[[f"{c}_mean" for c in knn_feature_cols]].values, dtype=np.float32
-        )
-        stds = np.array(
-            df_centroids[[f"{c}_std" for c in knn_feature_cols]].values, dtype=np.float32
-        )
+        means = np.array(df_centroids[[f"{c}_mean" for c in knn_feature_cols]].values, dtype=np.float32)
+        stds = np.array(df_centroids[[f"{c}_std" for c in knn_feature_cols]].values, dtype=np.float32)
         stds = np.where(stds < 1e-2, 1e-2, stds)
 
         label_map = {name: i for i, name in enumerate(df_centroids.index)}
@@ -92,11 +84,7 @@ def run_mingl_over_n_clusters(
             log_likelihoods.extend(log_probs.tolist())
 
             coeffs = 1.0 / (stds[np.newaxis, :, :] * np.sqrt(2 * np.pi))
-            exponents = (
-                -0.5
-                * ((batch_data[:, np.newaxis, :] - means[np.newaxis, :, :]) / stds[np.newaxis, :, :])
-                ** 2
-            )
+            exponents = -0.5 * ((batch_data[:, np.newaxis, :] - means[np.newaxis, :, :]) / stds[np.newaxis, :, :]) ** 2
             pdf_vals = coeffs * np.exp(exponents)
 
             total_probs = np.prod(pdf_vals, axis=2)
@@ -114,9 +102,7 @@ def run_mingl_over_n_clusters(
 
         avg_log = float(np.mean(log_likelihoods))
         avg_prob = float(np.mean(assigned_probs))
-        summary_rows.append(
-            {"n_clusters": n, "avg_log_likelihood": avg_log, "avg_assigned_probability": avg_prob}
-        )
+        summary_rows.append({"n_clusters": n, "avg_log_likelihood": avg_log, "avg_assigned_probability": avg_prob})
 
         adata.obs[cluster_col] = pd.Categorical(labels.astype(str))
         adata.obs[f"log_likelihood_n{n}"] = np.asarray(log_likelihoods, dtype=np.float32)
@@ -149,6 +135,7 @@ def run_mingl_over_n_clusters(
             plt.show()
 
     return (summary_df, per_cell_df) if return_per_cell else summary_df
+
 
 def find_elbow_point(
     y_values,
@@ -196,6 +183,7 @@ def find_elbow_point(
 
     return elbow_idx, x[elbow_idx], slope
 
+
 def find_best_unsupervised_plateau(
     log_likelihoods,
     assigned_probs,
@@ -221,12 +209,13 @@ def find_best_unsupervised_plateau(
 
     Returns: (composite_df, best_n, ranked_plateaus)
     """
-    import numpy as np
-    import pandas as pd
-    from sklearn.preprocessing import MinMaxScaler
-    from scipy.signal import savgol_filter
     from itertools import groupby
     from operator import itemgetter
+
+    import numpy as np
+    import pandas as pd
+    from scipy.signal import savgol_filter
+    from sklearn.preprocessing import MinMaxScaler
 
     if adata is not None:
         if uns_key is None or ll_key is None or prob_key is None:
@@ -309,13 +298,9 @@ def find_best_unsupervised_plateau(
     if not ranked_plateaus.empty:
         ranked_plateaus["start_n"] = [int(n_clusters[r["start_idx"]]) for r in runs]
         ranked_plateaus["rank"] = np.arange(1, len(ranked_plateaus) + 1)
-        ranked_plateaus = ranked_plateaus[
-            ["rank", "start_n", "length", "mean_score", "mean_slope", "start_idx"]
-        ]
+        ranked_plateaus = ranked_plateaus[["rank", "start_n", "length", "mean_score", "mean_slope", "start_idx"]]
     else:
-        ranked_plateaus = pd.DataFrame(
-            columns=["rank", "start_n", "length", "mean_score", "mean_slope", "start_idx"]
-        )
+        ranked_plateaus = pd.DataFrame(columns=["rank", "start_n", "length", "mean_score", "mean_slope", "start_idx"])
 
     print(f"📍 Best plateau starts at n = {best_n} (score = {composite_smooth[best_idx]:.4f})")
     if adata is not None and out_uns_key is not None:
@@ -327,6 +312,7 @@ def find_best_unsupervised_plateau(
 
     return composite_df, best_n, ranked_plateaus
 
+
 def plot_stable_composite(df, best_n, ll_n=None, prob_n=None, show: bool = True):
     import matplotlib.pyplot as plt
 
@@ -336,7 +322,7 @@ def plot_stable_composite(df, best_n, ll_n=None, prob_n=None, show: bool = True)
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
 
-    h1, = ax.plot(
+    (h1,) = ax.plot(
         df["n_clusters"],
         df["composite_score"],
         label="Composite Score",
@@ -345,7 +331,7 @@ def plot_stable_composite(df, best_n, ll_n=None, prob_n=None, show: bool = True)
         linewidth=3,
         markersize=10,
     )
-    h2, = ax.plot(
+    (h2,) = ax.plot(
         df["n_clusters"],
         df["composite_slope"],
         label="Slope",
@@ -396,82 +382,3 @@ def plot_stable_composite(df, best_n, ll_n=None, prob_n=None, show: bool = True)
         plt.show()
 
     return fig, legend_fig
-
-'''
-file_path = r"/Volumes/data/MINGLE/Data/Intestine/intestine_all_information_2.csv"#r"/Volumes/data/MINGLE/Data/Intestine/05_25_huBMAP_tunit.csv"
-#cells = mg.pp.read_file(file_path)
-
-adata = read_file(file_path)
-
-X = "x"
-Y = "y"
-reg = "unique_region"
-cluster_col = "Cell Type"
-
-sum_cols = list(adata.obs[cluster_col].unique())
-keep_cols = [X, Y, reg, cluster_col]
-
-windows = KNN2(adata, cluster_col=cluster_col, keep_obs_cols=keep_cols)
-k = 10
-windows2 = windows[k]
-windows2[cluster_col] = adata.obs[cluster_col].values
-
-adata_windows = ad.AnnData(X=None, obs=windows2.copy())
-adata_windows.obs_names = adata_windows.obs.index.astype(str)
-
-adata_windows.obsm[f"knn_windows_k{k}"] = adata_windows.obs[sum_cols].astype("float32").values
-adata_windows.uns["knn_windows"] = {
-    "k": k,
-    "cols": list(sum_cols),
-    "source": "dummy-count neighborhood windows",
-}
-
-summary_df, per_cell_df = run_mingl_over_n_clusters(
-    adata=adata_windows,          # <-- AnnData in, AnnData updated in-place
-    knn_feature_cols=sum_cols,    # same as your call
-    n_range=range(1, 51),
-    return_per_cell=True,
-    plot_summary=True,
-    x_key="x",
-    y_key="y",
-    region_key="unique_region",
-)
-
-ll_idx, ll_n, _ = find_elbow_point(
-    y_values=None,
-    x_values=None,
-    adata=adata_windows,
-    uns_key="mingl_n_clusters",
-    y_key="avg_log_likelihood",
-    x_key="n_clusters",
-)
-
-prob_idx, prob_n, _ = find_elbow_point(
-    y_values=None,
-    x_values=None,
-    adata=adata_windows,
-    uns_key="mingl_n_clusters",
-    y_key="avg_assigned_probability",
-    x_key="n_clusters",
-)
-
-# Step 2: Constrained plateau search (pulled from adata.uns)
-composite_df, best_n, ranked_plateaus = find_best_unsupervised_plateau(
-    log_likelihoods=None,
-    assigned_probs=None,
-    elbow_min=min(ll_n, prob_n),
-    elbow_max=max(ll_n, prob_n),
-    adata=adata_windows,
-    uns_key="mingl_n_clusters",
-    ll_key="avg_log_likelihood",
-    prob_key="avg_assigned_probability",
-    out_uns_key="mingl_plateau_selection",  # optional; remove if you don't want storage
-)
-
-# Step 3: Plot (unchanged)
-plot_stable_composite(composite_df, best_n, ll_n, prob_n)
-
-# Step 4: View ranked plateau table
-print(ranked_plateaus)
-
-'''
