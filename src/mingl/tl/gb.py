@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from typing import Optional, Dict, Any, Tuple, List
+from typing import Any
 
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
-from scipy.spatial import cKDTree
+from scipy.spatial import cKDTree  # pyrefly: ignore  # missing from pyrefly's scipy stubs, present at runtime
 from sklearn.linear_model import LinearRegression
 
 try:
@@ -23,31 +23,40 @@ except Exception:
 def _coerce_cluster_str(s: pd.Series) -> pd.Series:
     return s.astype(str).str.strip()
 
+
 def _normalize_prob_bin_labels(series: pd.Series) -> pd.Series:
     canonical = ["Very Low", "Low", "Medium", "High", "Very High"]
     _map = {
-        "very low": "Very Low", "very_low": "Very Low", "very-low": "Very Low",
+        "very low": "Very Low",
+        "very_low": "Very Low",
+        "very-low": "Very Low",
         "low": "Low",
-        "medium": "Medium", "med": "Medium",
+        "medium": "Medium",
+        "med": "Medium",
         "high": "High",
-        "very high": "Very High", "very_high": "Very High", "very-high": "Very High",
+        "very high": "Very High",
+        "very_high": "Very High",
+        "very-high": "Very High",
     }
+
     def f(x):
         if pd.isna(x):
             return np.nan
         sx = str(x).strip().lower()
         return _map.get(sx, str(x).strip())
+
     out = series.apply(f)
     # keep only canonical or NaN
     out = out.where(out.isin(canonical), other=np.nan)
     return out
 
+
 def _safe_assign_bins_from_score(
     series: pd.Series,
-    labels: List[str],
+    labels: list[str],
     n_bins: int = 5,
     prefer_quantiles: bool = True,
-) -> Tuple[pd.Series, np.ndarray, str]:
+) -> tuple[pd.Series, np.ndarray, str]:
     """
     Return (cat_series, edges, method) where cat_series contains labels low->high.
     """
@@ -98,20 +107,18 @@ def gb_prob_bin_cluster_plots(
     neighborhood_key: str = "Neighborhood",
     inner_name: str = "Inner Follicle",
     outer_name: str = "Outer Follicle",
-    canonical_bins: List[str] = ("Very Low", "Low", "Medium", "High", "Very High"),
+    canonical_bins: tuple[str, ...] = ("Very Low", "Low", "Medium", "High", "Very High"),
     min_cells: int = 10,
-
     # Plot 1 (bar) styling
     bar_spacing: float = 0.6,
     bar_width: float = 0.28,
     bar_fig_h: float = 3.0,
     xtick_fontsize_bar: int = 15,
     ytick_fontsize_bar: int = 15,
-    bar_colors: Tuple[str, str] = ("teal", "orange"),
+    bar_colors: tuple[str, str] = ("teal", "orange"),
     legend_fontsize: int = 25,
     legend_title: str = "Neighborhood",
-    legend_figsize: Tuple[float, float] = (1.6, 0.5),
-
+    legend_figsize: tuple[float, float] = (1.6, 0.5),
     # Plot 2 (violin) styling
     violin_fig_h: float = 3.0,
     xtick_fontsize_violin: int = 15,
@@ -121,12 +128,11 @@ def gb_prob_bin_cluster_plots(
     violin_alpha: float = 0.95,
     mean_marker_size: float = 4.0,
     plot_means: bool = True,
-
     # Output keys
     out_prefix: str = "pb",
     make_plots: bool = True,
     show: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     scverse-compatible implementation of your Plot 1 (inner/outer bar by ranked cluster)
     and Plot 2 (pooled violin of Score across Inner+Outer, same ranked order, min_cells filter).
@@ -141,7 +147,6 @@ def gb_prob_bin_cluster_plots(
 
     Returns dict with DataFrames + figs (if make_plots).
     """
-
     # ---- checks
     for k in (cluster_key, neighborhood_key):
         if k not in adata.obs.columns:
@@ -153,7 +158,7 @@ def gb_prob_bin_cluster_plots(
     obs["cluster_str"] = _coerce_cluster_str(obs[cluster_key])
 
     # ---- bin mapping used ONLY for ranking (same logic as your script)
-    weights = {b: 2 ** i for i, b in enumerate(list(canonical_bins))}
+    weights = {b: 2**i for i, b in enumerate(list(canonical_bins))}
 
     cat_series, edges_used, method_used = _safe_assign_bins_from_score(
         obs[score_key],
@@ -436,25 +441,25 @@ def gb_local_score_gradients(
     adata,
     *,
     region_key: str = "unique_region",
-    region_value: Optional[str] = None,
+    region_value: str | None = None,
     x_key: str = "x",
     y_key: str = "y",
     score_key: str = "Score",
-    score_source: str = "obs",         # "obs" or "layer"
-    score_layer: Optional[str] = None, # used if score_source="layer"
+    score_source: str = "obs",  # "obs" or "layer"
+    score_layer: str | None = None,  # used if score_source="layer"
     k_neighbors: int = 20,
-    normalize_by: str = "iqr",         # "iqr" | "range" | "none"
+    normalize_by: str = "iqr",  # "iqr" | "range" | "none"
     use_progress: bool = True,
     make_plots: bool = True,
-    sample_for_plot: Optional[int] = None,
-    figsize: Tuple[float, float] = (8, 8),
+    sample_for_plot: int | None = None,
+    figsize: tuple[float, float] = (8, 8),
     cmap: str = "inferno",
     point_size: float = 1.0,
     alpha_pts: float = 0.95,
     vmax_pct: float = 99.0,
     out_prefix: str = "grad",
     show: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
 
     if region_key not in adata.obs.columns:
         raise KeyError(f"region_key='{region_key}' not found in adata.obs.")
@@ -498,9 +503,7 @@ def gb_local_score_gradients(
         else:
             arr = np.asarray(layer)[adata.obs.index.get_indexer(idx)]
             if arr.shape[1] != 1:
-                raise ValueError(
-                    f"Layer '{score_layer}' has shape {arr.shape}. Expected 1 column for scalar score."
-                )
+                raise ValueError(f"Layer '{score_layer}' has shape {arr.shape}. Expected 1 column for scalar score.")
             scores = arr[:, 0].astype(float)
     else:
         raise ValueError("score_source must be 'obs' or 'layer'.")
@@ -626,7 +629,8 @@ def gb_local_score_gradients(
         fig1 = plt.figure(figsize=figsize, dpi=300)
         ax1 = plt.gca()
         ax1.scatter(
-            plot_obs[x_key], plot_obs[y_key],
+            plot_obs[x_key],
+            plot_obs[y_key],
             c=plot_obs[out_mag_norm],
             cmap=cmap,
             s=point_size,
@@ -648,19 +652,20 @@ def gb_local_score_gradients(
         sm.set_array([])
 
         fig2 = plt.figure(figsize=(4, 4), dpi=300)
-#        fig2.subplots_adjust(right=0.85)
+        #        fig2.subplots_adjust(right=0.85)
 
         cb_ax = fig2.add_axes([0.15, 0.05, 0.06, 0.9])
         cbar = fig2.colorbar(sm, cax=cb_ax, orientation="vertical")
         cb_labelsize = 15
         cbar.ax.tick_params(labelsize=cb_labelsize)
         cbar.set_label("Normalized Gradient Magnitude\n(IQR per median-NN distance)", fontsize=cb_labelsize)
-        #plt.tight_layout()
+        # plt.tight_layout()
         if show:
             plt.show()
         figs["colorbar"] = fig2
 
     return {"summary": summary, "params": params, "figs": figs}
+
 
 def gb(
     adata,
@@ -675,14 +680,21 @@ def gb(
     pb_prefix: str = "pb",
     # Plot3 inputs
     region_key: str = "unique_region",
-    region_value: str = "B006_Descending - Sigmoid",
+    region_value: str | None = None,
     x_key: str = "x",
     y_key: str = "y",
     k_neighbors: int = 20,
     normalize_by: str = "iqr",
     grad_prefix: str = "grad",
     make_plots: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
+    """Run the probability-bin cluster plots and the local gradient map together.
+
+    ``region_value`` has no manuscript-specific default: ``None`` computes the
+    gradient map over every cell, matching :func:`gb_local_score_gradients`.
+    Pass an explicit region (for example, from a workflow config) to restrict
+    the map to one tissue region.
+    """
     out12 = gb_prob_bin_cluster_plots(
         adata,
         cluster_key=cluster_key,
@@ -707,7 +719,3 @@ def gb(
         out_prefix=grad_prefix,
     )
     return {"plot12": out12, "plot3": out3}
-
-
-
-

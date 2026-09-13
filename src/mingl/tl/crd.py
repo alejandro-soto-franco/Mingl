@@ -1,9 +1,8 @@
+import anndata as ad
 import numpy as np
 import pandas as pd
-from pathlib import Path
 from tqdm import tqdm
 
-import anndata as ad
 
 def crd(
     cells: ad.AnnData,
@@ -11,30 +10,37 @@ def crd(
     probabilities_df: pd.DataFrame,
     cell_type_features,
     *,
+    cellid_col: str = "cellid",
+    region_col: str = "region",
+    neigh_name_col: str = "neigh_name",
     out_probs_path: str = "local_probs.csv",
     out_delta_path: str = "delta_probs.csv",
     copy_cells: pd.DataFrame | None = None,
 ):
     """
-    crd
+    Crd
 
     Compare, for each region, LOCAL (region-only) MINGL probabilities vs GLOBAL (all-cells) MINGL probabilities.
 
     Inputs
     ------
     cells : anndata.AnnData
-        AnnData with required metadata in `.obs` including:
-        - 'cellid', 'region', 'neigh_name'
-        (and any other columns you use elsewhere).
+        AnnData with required metadata in `.obs` including `cellid_col`,
+        `region_col` and `neigh_name_col` (and any other columns you use
+        elsewhere).
     windows2 : pd.DataFrame
-        Output window dataframe for a chosen k (e.g., windows[k]) containing:
-        - 'cellid', 'region', and all columns in `cell_type_features`
+        Output window dataframe for a chosen k (e.g., windows[k]) containing
+        `cellid_col`, `region_col`, and all columns in `cell_type_features`.
         Index should align to `cells.obs.index` (same as your pipeline).
     probabilities_df : pd.DataFrame
         Global MINGL probabilities computed over all cells together.
-        Must have a 'cellid' column plus neighborhood columns.
+        Must have a `cellid_col` column plus neighborhood columns.
     cell_type_features : list[str]
         Feature columns used for likelihood computation (cell-type composition features).
+    cellid_col, region_col, neigh_name_col
+        Column names for the per-cell id, region and assigned-neighbourhood
+        name. Defaults match the manuscript's naming ('cellid', 'region',
+        'neigh_name'); pass explicit names for data with different columns.
     out_probs_path : str
         Where to save local probabilities CSV.
     out_delta_path : str
@@ -46,23 +52,21 @@ def crd(
     Returns
     -------
     (final_probs_df, final_deltas_df) : tuple[pd.DataFrame, pd.DataFrame]
-        final_probs_df columns: neighborhoods + ['cellid','region','neigh_name']
-        final_deltas_df columns: [f"{n}_delta" ...] + ['cellid','region','neigh_name']
+        final_probs_df columns: neighborhoods + [cellid_col, region_col, neigh_name_col]
+        final_deltas_df columns: [f"{n}_delta" ...] + [cellid_col, region_col, neigh_name_col]
     """
-    import numpy as np
     import pandas as pd
-    from tqdm import tqdm
 
     # neighborhoods list (same logic)
     neighborhoods = probabilities_df.columns.tolist()
-    if 'cellid' in neighborhoods:
-        neighborhoods.remove('cellid')
-    if 'Unnamed: 0' in neighborhoods:
-        neighborhoods.remove('Unnamed: 0')
+    if cellid_col in neighborhoods:
+        neighborhoods.remove(cellid_col)
+    if "Unnamed: 0" in neighborhoods:
+        neighborhoods.remove("Unnamed: 0")
 
     # assigned_df validation (same logic)
-    assigned_df = cells.obs.set_index("cellid")
-    required_assigned_cols = {"neigh_name", "region"}
+    assigned_df = cells.obs.set_index(cellid_col)
+    required_assigned_cols = {neigh_name_col, region_col}
     if not required_assigned_cols.issubset(set(assigned_df.columns)):
         raise ValueError(f"assigned_df must contain columns: {required_assigned_cols}")
 
@@ -77,19 +81,19 @@ def crd(
     # Prepare storage (same logic)
     all_region_probs = []
     all_region_deltas = []
-    global_idxed = probabilities_df.set_index('cellid')
+    global_idxed = probabilities_df.set_index(cellid_col)
 
     # Use copy_cells DataFrame (obs copy) for neigh_name assignment
     if copy_cells is None:
         copy_cells = cells.obs.copy()
 
     # Run loop (same logic)
-    unique_regions = windows2['region'].unique()
+    unique_regions = windows2[region_col].unique()
     print("Processing regions:", len(unique_regions))
 
     for region in tqdm(unique_regions, desc="Processing regions (CPU log-space)"):
-        region_cells = windows2[windows2['region'] == region].copy()
-        region_cell_ids = region_cells['cellid'].values
+        region_cells = windows2[windows2[region_col] == region].copy()
+        region_cell_ids = region_cells[cellid_col].values
 
         cell_data = region_cells[cell_type_features].copy()
         C = cell_data.shape[0]
@@ -99,11 +103,11 @@ def crd(
 
         # neigh_name assignment (same logic)
         try:
-            region_cells['neigh_name'] = copy_cells.loc[region_cells.index, 'neigh_name'].values
+            region_cells[neigh_name_col] = copy_cells.loc[region_cells.index, neigh_name_col].values
         except Exception:
-            if 'cellid' in copy_cells.columns:
-                mapping = copy_cells.set_index('cellid')['neigh_name'].to_dict()
-                region_cells['neigh_name'] = region_cells['cellid'].map(mapping).values
+            if cellid_col in copy_cells.columns:
+                mapping = copy_cells.set_index(cellid_col)[neigh_name_col].to_dict()
+                region_cells[neigh_name_col] = region_cells[cellid_col].map(mapping).values
             else:
                 raise
 
@@ -111,10 +115,10 @@ def crd(
         region_results = []
         neigh_counts = []
         for neighborhood in neighborhoods:
-            neighborhood_cells = region_cells[region_cells['neigh_name'] == neighborhood]
+            neighborhood_cells = region_cells[region_cells[neigh_name_col] == neighborhood]
             matching_cell_ids = neighborhood_cells.index
             neigh_counts.append(len(matching_cell_ids))
-            stats = {"Neighborhood": neighborhood}
+            stats: dict[str, object] = {"Neighborhood": neighborhood}
 
             if len(matching_cell_ids) <= 1:
                 for col in cell_type_features:
@@ -131,7 +135,7 @@ def crd(
         df_region_centroids = pd.DataFrame(region_results)
 
         centroid_means = df_region_centroids[[f"{c}_mean" for c in cell_type_features]].values.astype(float)
-        centroid_stds  = df_region_centroids[[f"{c}_std"  for c in cell_type_features]].values.astype(float)
+        centroid_stds = df_region_centroids[[f"{c}_std" for c in cell_type_features]].values.astype(float)
 
         global_mean_fallback = np.nanmean(centroid_means, axis=0)
         global_std_fallback = np.nanmedian(np.where(np.isnan(centroid_stds), np.nan, centroid_stds), axis=0)
@@ -150,22 +154,22 @@ def crd(
         centroid_stds = np.where(centroid_stds <= 0, 1e-6, centroid_stds)
 
         region_means_cp = np.array(centroid_means, dtype=np.float64)
-        region_stds_cp  = np.array(centroid_stds,  dtype=np.float64)
-        cell_array_cp   = np.array(cell_data.values.astype(np.float64), dtype=np.float64)
+        region_stds_cp = np.array(centroid_stds, dtype=np.float64)
+        cell_array_cp = np.array(cell_data.values.astype(np.float64), dtype=np.float64)
 
         Xarr = cell_array_cp[:, None, :]
         Marr = region_means_cp[None, :, :]
         Sarr = region_stds_cp[None, :, :]
 
-        log_coeff = -0.5 * np.log(2.0 * np.pi * (Sarr ** 2))
-        exponent  = -0.5 * ((Xarr - Marr) / Sarr) ** 2
-        log_pdf   = log_coeff + exponent
+        log_coeff = -0.5 * np.log(2.0 * np.pi * (Sarr**2))
+        exponent = -0.5 * ((Xarr - Marr) / Sarr) ** 2
+        log_pdf = log_coeff + exponent
 
         log_total = np.sum(log_pdf, axis=2)
 
         row_logsum = cp_logsumexp(log_total, axis=1, keepdims=True)
-        log_prob   = log_total - row_logsum
-        probs_cp   = np.exp(log_prob)
+        log_prob = log_total - row_logsum
+        probs_cp = np.exp(log_prob)
 
         local_probs_np = probs_cp
 
@@ -188,9 +192,9 @@ def crd(
 
         # Local probs df (same logic)
         local_probs_df = pd.DataFrame(local_probs_np, columns=neighborhoods)
-        local_probs_df['cellid'] = region_cells['cellid'].values
-        local_probs_df['region'] = region
-        local_probs_df['neigh_name'] = region_cells['neigh_name'].values
+        local_probs_df[cellid_col] = region_cells[cellid_col].values
+        local_probs_df[region_col] = region
+        local_probs_df[neigh_name_col] = region_cells[neigh_name_col].values
         all_region_probs.append(local_probs_df)
 
         if global_probs.shape != local_probs_np.shape:
@@ -198,9 +202,9 @@ def crd(
 
         delta_values = local_probs_np - global_probs
         delta_df = pd.DataFrame(delta_values, columns=[f"{n}_delta" for n in neighborhoods])
-        delta_df["cellid"] = region_cells['cellid'].values
-        delta_df["region"] = region
-        delta_df["neigh_name"] = region_cells["neigh_name"].values
+        delta_df[cellid_col] = region_cells[cellid_col].values
+        delta_df[region_col] = region
+        delta_df[neigh_name_col] = region_cells[neigh_name_col].values
         all_region_deltas.append(delta_df)
 
     # Save outputs (same logic)
@@ -214,6 +218,7 @@ def crd(
     print("✅ Done. Saved region-level delta probs to:", out_delta_path)
 
     return final_probs_df, final_deltas_df
+
 
 def crd2(
     *,
@@ -232,7 +237,7 @@ def crd2(
     shrink_alpha: float = 5.0,
 ):
     """
-    crd
+    Crd
 
     Scverse-compatible wrapper for your region-vs-global MINGL comparison.
     - Accepts scverse-friendly data structures (AnnData-derived obs as DataFrames).
@@ -256,10 +261,8 @@ def crd2(
     """
     # Updated GPU region-level probability computation (CuPy-like, log-space, robust to underflow)
     # NOTE: to keep scverse-compat and avoid GPU hard-deps, we use numpy as `cp` exactly as you wrote.
-    import numpy as np
-    import pandas as pd
     import numpy as cp
-    from tqdm import tqdm
+    import pandas as pd
 
     # small alias used in diagnostics
     _np = np
@@ -270,13 +273,20 @@ def crd2(
         raise ValueError(f"assigned_df must contain columns: {required_assigned_cols}")
 
     # Sanitizer utility (define once) (unchanged)
-    def sanitize_centroids(means, stds, counts, region_cells,
-                           min_floor_abs=min_floor_abs, use_region_frac=use_region_frac, shrink_alpha=shrink_alpha):
+    def sanitize_centroids(
+        means,
+        stds,
+        counts,
+        region_cells,
+        min_floor_abs=min_floor_abs,
+        use_region_frac=use_region_frac,
+        shrink_alpha=shrink_alpha,
+    ):
         K, F = means.shape
 
         region_mean = np.nanmean(means, axis=0) if np.any(np.isfinite(means)) else np.zeros(F, dtype=float)
-        region_std  = np.nanstd(region_cells[cell_type_features].values.astype(float), axis=0, ddof=1)
-        region_std  = np.where(np.isnan(region_std) | (region_std <= 0), 0.1, region_std)
+        region_std = np.nanstd(region_cells[cell_type_features].values.astype(float), axis=0, ddof=1)
+        region_std = np.where(np.isnan(region_std) | (region_std <= 0), 0.1, region_std)
         min_std_vec = np.maximum(region_std * use_region_frac, min_floor_abs)
 
         means_clean = np.where(np.isfinite(means), means, region_mean[None, :])
@@ -285,10 +295,10 @@ def crd2(
         stds_clean = np.maximum(stds_clean, min_std_vec[None, :])
 
         n = counts.astype(float) + 1e-8
-        neigh_var = stds_clean ** 2
-        region_var = (region_std ** 2)[None, :]
+        neigh_var = stds_clean**2
+        region_var = (region_std**2)[None, :]
         combined_var = (n[:, None] * neigh_var + shrink_alpha * region_var) / (n[:, None] + shrink_alpha)
-        stds_shrunk = np.sqrt(np.maximum(combined_var, min_std_vec[None, :]**2))
+        stds_shrunk = np.sqrt(np.maximum(combined_var, min_std_vec[None, :] ** 2))
         stds_shrunk = np.maximum(stds_shrunk, min_std_vec[None, :])
 
         return means_clean, stds_shrunk
@@ -305,13 +315,13 @@ def crd2(
     all_region_probs = []
     all_region_deltas = []
 
-    unique_regions = windows2['region'].unique()
+    unique_regions = windows2["region"].unique()
     print("Processing regions:", len(unique_regions))
 
     for region in tqdm(unique_regions, desc="Processing regions (log-space GPU)"):
         # 1) Filter cells for this region (unchanged)
-        region_cells = windows2[windows2['region'] == region].copy()
-        region_cell_ids = region_cells['cellid'].values
+        region_cells = windows2[windows2["region"] == region].copy()
+        region_cell_ids = region_cells["cellid"].values
         cell_data = region_cells[cell_type_features].copy()
         C = cell_data.shape[0]
         if C == 0:
@@ -323,11 +333,11 @@ def crd2(
 
         # 2) Add assigned neighborhood (unchanged)
         try:
-            region_cells['neigh_name'] = copy_cells.loc[region_cells.index, 'neigh_name'].values
+            region_cells["neigh_name"] = copy_cells.loc[region_cells.index, "neigh_name"].values
         except Exception:
-            if 'cellid' in copy_cells.columns:
-                mapping = copy_cells.set_index('cellid')['neigh_name'].to_dict()
-                region_cells['neigh_name'] = region_cells['cellid'].map(mapping).values
+            if "cellid" in copy_cells.columns:
+                mapping = copy_cells.set_index("cellid")["neigh_name"].to_dict()
+                region_cells["neigh_name"] = region_cells["cellid"].map(mapping).values
             else:
                 raise
 
@@ -335,7 +345,7 @@ def crd2(
         region_results = []
         neigh_counts = []
         for neighborhood in neighborhoods:
-            neighborhood_cells = region_cells[region_cells['neigh_name'] == neighborhood]
+            neighborhood_cells = region_cells[region_cells["neigh_name"] == neighborhood]
             matching_cell_ids = neighborhood_cells.index
             neigh_counts.append(len(matching_cell_ids))
             stats = {"Neighborhood": neighborhood}
@@ -354,7 +364,7 @@ def crd2(
         K = df_region_centroids.shape[0]
 
         centroid_means = df_region_centroids[[f"{c}_mean" for c in cell_type_features]].values.astype(float)
-        centroid_stds  = df_region_centroids[[f"{c}_std"  for c in cell_type_features]].values.astype(float)
+        centroid_stds = df_region_centroids[[f"{c}_std" for c in cell_type_features]].values.astype(float)
         counts = np.array(neigh_counts, dtype=int)
 
         # DIAGNOSTICS (unchanged)
@@ -362,16 +372,32 @@ def crd2(
         flat_stds = centroid_stds.flatten()
         pct = lambda q: float(_np.nanpercentile(flat_stds, q))
         print(f"  Region '{region}': cell_count={C}, neighborhoods={K}")
-        print(f"   neigh_counts: min={neigh_counts_arr.min()}, median={_np.median(neigh_counts_arr)}, max={neigh_counts_arr.max()}")
-        print("   centroid std percentiles (1,5,25,50,75,95,99,100):",
-              pct(1), pct(5), pct(25), pct(50), pct(75), pct(95), pct(99), _np.nanmax(flat_stds))
+        print(
+            f"   neigh_counts: min={neigh_counts_arr.min()}, median={_np.median(neigh_counts_arr)}, max={neigh_counts_arr.max()}"
+        )
+        print(
+            "   centroid std percentiles (1,5,25,50,75,95,99,100):",
+            pct(1),
+            pct(5),
+            pct(25),
+            pct(50),
+            pct(75),
+            pct(95),
+            pct(99),
+            _np.nanmax(flat_stds),
+        )
         small_frac = float(_np.nanmean(flat_stds <= 1e-3))
         print(f"   fraction of centroid stds <= 1e-3: {small_frac:.3f}")
 
         # SANITIZE (unchanged)
         means_clean, stds_shrunk = sanitize_centroids(
-            centroid_means.copy(), centroid_stds.copy(), counts, region_cells,
-            min_floor_abs=min_floor_abs, use_region_frac=use_region_frac, shrink_alpha=shrink_alpha
+            centroid_means.copy(),
+            centroid_stds.copy(),
+            counts,
+            region_cells,
+            min_floor_abs=min_floor_abs,
+            use_region_frac=use_region_frac,
+            shrink_alpha=shrink_alpha,
         )
 
         # Exclude neighborhoods with too few cells (unchanged)
@@ -381,17 +407,18 @@ def crd2(
             stds_shrunk[low_mask, :] = np.nan
 
         # Region-level fallbacks (unchanged)
-        region_mean  = np.nanmean(means_clean, axis=0)
+        region_mean = np.nanmean(means_clean, axis=0)
         alt_region_mean = np.nanmean(cell_data.values.astype(float), axis=0)
-        region_mean = np.where(np.isfinite(region_mean), region_mean,
-                               np.where(np.isfinite(alt_region_mean), alt_region_mean, 0.0))
+        region_mean = np.where(
+            np.isfinite(region_mean), region_mean, np.where(np.isfinite(alt_region_mean), alt_region_mean, 0.0)
+        )
 
-        region_std  = np.nanstd(cell_data.values.astype(float), axis=0, ddof=1)
-        region_std  = np.where(np.isnan(region_std) | (region_std <= 0), 0.1, region_std)
+        region_std = np.nanstd(cell_data.values.astype(float), axis=0, ddof=1)
+        region_std = np.where(np.isnan(region_std) | (region_std <= 0), 0.1, region_std)
         min_std_vec = np.maximum(region_std * use_region_frac, min_floor_abs)
 
         compute_means = np.where(np.isfinite(means_clean), means_clean, region_mean[None, :])
-        compute_stds  = np.where(np.isfinite(stds_shrunk), stds_shrunk, min_std_vec[None, :])
+        compute_stds = np.where(np.isfinite(stds_shrunk), stds_shrunk, min_std_vec[None, :])
 
         counts = np.array(neigh_counts, dtype=int)
         count_mask = counts >= min_count
@@ -409,7 +436,7 @@ def crd2(
             print(f"  Region {region}: NO valid neighborhoods (all excluded) -> local_probs all NaN")
         else:
             means_valid = compute_means[valid_idx, :]
-            stds_valid  = compute_stds[valid_idx, :]
+            stds_valid = compute_stds[valid_idx, :]
 
             if not (np.isfinite(means_valid).all() and np.isfinite(stds_valid).all()):
                 local_probs_np = np.full((C, K_full), np.nan, dtype=float)
@@ -417,14 +444,14 @@ def crd2(
             else:
                 # "GPU" arrays (cp == numpy here; unchanged structure)
                 region_means_cp = cp.asarray(means_valid, dtype=cp.float64)
-                region_stds_cp  = cp.asarray(stds_valid, dtype=cp.float64)
-                cell_array_cp   = cp.asarray(cell_data.values.astype(np.float64), dtype=cp.float64)
+                region_stds_cp = cp.asarray(stds_valid, dtype=cp.float64)
+                cell_array_cp = cp.asarray(cell_data.values.astype(np.float64), dtype=cp.float64)
 
                 X = cell_array_cp[:, None, :]
                 M = region_means_cp[None, :, :]
                 S = region_stds_cp[None, :, :]
 
-                log_coeff = -0.5 * cp.log(2.0 * cp.pi * (S ** 2))
+                log_coeff = -0.5 * cp.log(2.0 * cp.pi * (S**2))
                 exponent = -0.5 * ((X - M) / S) ** 2
                 log_pdf = log_coeff + exponent
 
@@ -445,7 +472,8 @@ def crd2(
                 if invalid_idx.size:
                     local_probs_np[:, invalid_idx] = np.nan
 
-                del region_means_cp, region_stds_cp, cell_array_cp, X, M, S, log_pdf, log_total, row_logsum, log_prob_valid, probs_valid_cp
+                del region_means_cp, region_stds_cp, cell_array_cp
+                del X, M, S, log_pdf, log_total, row_logsum, log_prob_valid, probs_valid_cp
                 try:
                     cp._default_memory_pool.free_all_blocks()
                 except Exception:
@@ -459,7 +487,7 @@ def crd2(
         print(f"  Region {region}: cells={C}, rows_all_nan={n_all_nan_rows}, zero-sum-rows={n_zero_rows}")
 
         col_to_idx = {col: i for i, col in enumerate(neighborhoods)}
-        assigned_idx = [col_to_idx.get(n, None) for n in region_cells['neigh_name'].values]
+        assigned_idx = [col_to_idx.get(n, None) for n in region_cells["neigh_name"].values]
         assigned_idx_arr = _np.array([i if i is not None else -1 for i in assigned_idx], dtype=int)
 
         assigned_probs = _np.full(len(local_probs_np), _np.nan)
@@ -467,26 +495,35 @@ def crd2(
         if valid_rows.any():
             assigned_probs[valid_rows] = local_probs_np[valid_rows, assigned_idx_arr[valid_rows]]
 
-        print("  assigned-prob: mean, median, min, max:",
-              _np.nanmean(assigned_probs), _np.nanmedian(assigned_probs),
-              _np.nanmin(assigned_probs), _np.nanmax(assigned_probs))
+        print(
+            "  assigned-prob: mean, median, min, max:",
+            _np.nanmean(assigned_probs),
+            _np.nanmedian(assigned_probs),
+            _np.nanmin(assigned_probs),
+            _np.nanmax(assigned_probs),
+        )
 
-        with np.errstate(divide='ignore', invalid='ignore'):
+        with np.errstate(divide="ignore", invalid="ignore"):
             p = local_probs_np.copy()
             p = np.where((p >= 0) & np.isfinite(p), p, 0.0)
             mask = p > 0.0
             ent = -np.nansum(p * np.log2(np.where(mask, p, 1.0)), axis=1)
             ent[rows_all_nan] = np.nan
 
-        print("  entropy (bits) mean/median/min/max:",
-              _np.nanmean(ent), _np.nanmedian(ent), _np.nanmin(ent), _np.nanmax(ent))
+        print(
+            "  entropy (bits) mean/median/min/max:",
+            _np.nanmean(ent),
+            _np.nanmedian(ent),
+            _np.nanmin(ent),
+            _np.nanmax(ent),
+        )
 
         low_count_neighs = [neigh for neigh, cnt in zip(neighborhoods, neigh_counts) if cnt <= 1]
         if len(low_count_neighs) > 0:
             print(f"  neighborhoods with <=1 cell in region: {len(low_count_neighs)} (examples):", low_count_neighs[:6])
 
         # 6) Retrieve global probabilities (unchanged)
-        global_idxed = probabilities_df.set_index('cellid')
+        global_idxed = probabilities_df.set_index("cellid")
         common_ids = [cid for cid in region_cell_ids if cid in global_idxed.index]
         if len(common_ids) != len(region_cell_ids):
             global_probs = np.full((len(region_cell_ids), K_full), np.nan, dtype=float)
@@ -499,26 +536,26 @@ def crd2(
             global_probs = global_idxed.loc[region_cell_ids, neighborhoods].values
 
         # Prepare x/y for output (unchanged)
-        x_vals = region_cells.get('x', region_cells.get('X', np.nan))
-        y_vals = region_cells.get('y', region_cells.get('Y', np.nan))
+        x_vals = region_cells.get("x", region_cells.get("X", np.nan))
+        y_vals = region_cells.get("y", region_cells.get("Y", np.nan))
 
         # 7) local probs df (unchanged)
         local_probs_df = pd.DataFrame(local_probs_np, columns=neighborhoods)
-        local_probs_df['cellid'] = region_cells['cellid'].values
-        local_probs_df['region'] = region
-        local_probs_df['neigh_name'] = region_cells['neigh_name'].values
-        local_probs_df['x'] = np.array(x_vals)
-        local_probs_df['y'] = np.array(y_vals)
+        local_probs_df["cellid"] = region_cells["cellid"].values
+        local_probs_df["region"] = region
+        local_probs_df["neigh_name"] = region_cells["neigh_name"].values
+        local_probs_df["x"] = np.array(x_vals)
+        local_probs_df["y"] = np.array(y_vals)
         all_region_probs.append(local_probs_df)
 
         # 8) delta df (unchanged)
         delta_values = local_probs_np - global_probs
         delta_df = pd.DataFrame(delta_values, columns=[f"{n}_delta" for n in neighborhoods])
-        delta_df["cellid"] = region_cells['cellid'].values
+        delta_df["cellid"] = region_cells["cellid"].values
         delta_df["region"] = region
         delta_df["neigh_name"] = region_cells["neigh_name"].values
-        delta_df['x'] = np.array(x_vals)
-        delta_df['y'] = np.array(y_vals)
+        delta_df["x"] = np.array(x_vals)
+        delta_df["y"] = np.array(y_vals)
         all_region_deltas.append(delta_df)
 
     # After loop: combine and save (unchanged)
