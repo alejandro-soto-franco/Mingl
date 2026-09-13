@@ -1,9 +1,11 @@
-import anndata as ad
-from typing import Dict, Optional, Sequence
-import pandas as pd
-import numpy as np
-from sklearn.neighbors import NearestNeighbors
 import time
+from collections.abc import Sequence
+
+import anndata as ad
+import numpy as np
+import pandas as pd
+from sklearn.neighbors import NearestNeighbors
+
 
 def KNN(
     adata: ad.AnnData,
@@ -13,7 +15,7 @@ def KNN(
     region_key: str = "unique_region",
     cluster_col: str = "cell_type",
     ks: Sequence[int] = (5, 10, 20),
-) -> Dict[int, pd.DataFrame]:
+) -> dict[int, pd.DataFrame]:
     """
     Compute cell-type neighborhood windows using a k-NN in (x,y) per region.
 
@@ -83,7 +85,7 @@ def KNN(
             window = window.reshape(len(chunk), k, len(sum_cols)).sum(axis=1)
             out_dict[(tissue_name, k)] = (window.astype(np.float16), indices)
 
-    windows: Dict[int, pd.DataFrame] = {}
+    windows: dict[int, pd.DataFrame] = {}
     for k in ks:
         dfs = []
         for exp in exps:

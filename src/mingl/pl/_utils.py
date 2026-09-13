@@ -1,13 +1,13 @@
 # MINGL/src/MINGL/pl/_utils.py
 
 from __future__ import annotations
-from typing import Union
+
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 
 try:
-    import scanpy as sc
+    import scanpy as sc  # pyrefly: ignore  # optional dependency, not installed in this environment
 except Exception:
     # scanpy is optional here; if it is unavailable or broken, we still want
     # the plotting helpers to fall back to a local figures/ directory.
@@ -22,7 +22,7 @@ def get_figdir() -> Path:
     return Path("figures")
 
 
-def save_figure(fig: plt.Figure, base: str, save: Union[bool, str]):
+def save_figure(fig: plt.Figure, base: str, save: bool | str):
     """
     Save a figure to disk, scanpy-style.
 

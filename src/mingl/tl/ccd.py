@@ -1,9 +1,11 @@
 import os
 import re
 import time
+
+import anndata as ad
 import numpy as np
 import pandas as pd
-import anndata as ad
+
 
 def ccd(
     cells_path: str,
@@ -32,7 +34,6 @@ def ccd(
     Returns:
       adata, combined_melted_filtered, combo_counts
     """
-
     start_time = time.time()
 
     # ---- helpers ----
@@ -90,7 +91,7 @@ def ccd(
 
     print("🔹 Loading probability CSVs ...")
     combined_df = read_probs_csv(probs_paths["combined"])
-    
+
     context_map = {
         "tumor": "Tumor",
         "normal": "Normal",
@@ -227,7 +228,7 @@ def ccd(
         df_long = df_long[df_long["Neighborhood"] == df_long["neigh_name"]].copy()
         after = len(df_long)
 
-        print(f"  - rows before filter: {before}; after assigned filter: {after} (kept {after/before:.2%})")
+        print(f"  - rows before filter: {before}; after assigned filter: {after} (kept {after / before:.2%})")
 
         n_missing_assigned = df_long["neigh_name"].isna().sum()
         if n_missing_assigned > 0:
@@ -239,11 +240,7 @@ def ccd(
     print(f"\n✅ Combined melted (raw): {combined_melted.shape[0]} rows, {combined_melted.shape[1]} cols")
 
     # ---- 7) MIN_COUNT filter on Neighborhood×Context ----
-    combo_counts = (
-        combined_melted.groupby(["Neighborhood", "Context"])[cellid_key]
-        .nunique()
-        .reset_index(name="count")
-    )
+    combo_counts = combined_melted.groupby(["Neighborhood", "Context"])[cellid_key].nunique().reset_index(name="count")
 
     excluded = combo_counts[combo_counts["count"] < min_count]
     print("\n⚠️ Excluded Neighborhood × Context pairs (count < MIN_COUNT):")
@@ -253,7 +250,9 @@ def ccd(
     valid = combo_counts[combo_counts["count"] >= min_count][["Neighborhood", "Context"]]
     combined_melted_filtered = combined_melted.merge(valid, on=["Neighborhood", "Context"], how="inner")
 
-    print(f"✅ Final combined_melted: {combined_melted_filtered.shape[0]} rows, {combined_melted_filtered.shape[1]} cols")
+    print(
+        f"✅ Final combined_melted: {combined_melted_filtered.shape[0]} rows, {combined_melted_filtered.shape[1]} cols"
+    )
     print(f"Unique full regions represented after filtering: {combined_melted_filtered['region_full'].nunique()}")
     print("Top 10 Neighborhood×Context pairs by count:")
     print(combo_counts.sort_values("count", ascending=False).head(10))

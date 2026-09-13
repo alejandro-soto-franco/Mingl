@@ -1,11 +1,12 @@
 import os
 import re
 import time
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 
 from .. import pp  # scverse-style (AnnData in / AnnData out)
 
@@ -48,7 +49,8 @@ def cnd(
       probs_paths["metaplasia"] = <csv> (optional)
       probs_paths["dysplasia"] = <csv> (optional)
 
-    Returns:
+    Returns
+    -------
       dict with:
         - adata
         - delta_wide_by_context (dict[str, DataFrame])
@@ -56,7 +58,6 @@ def cnd(
         - combo_counts (DataFrame)
         - fig, fig_cb (matplotlib figures or None)
     """
-
     t_start = time.time()
     if out_dir is not None:
         os.makedirs(out_dir, exist_ok=True)
@@ -206,13 +207,13 @@ def cnd(
     for label, delta in delta_wide_by_context.items():
         df_long = (
             delta.reset_index()
-                 .rename(columns={"index": cellid_key})
-                 .melt(
-                     id_vars=[cellid_key],
-                     value_vars=neighborhood_cols,
-                     var_name="Neighborhood",
-                     value_name="Delta",
-                 )
+            .rename(columns={"index": cellid_key})
+            .melt(
+                id_vars=[cellid_key],
+                value_vars=neighborhood_cols,
+                var_name="Neighborhood",
+                value_name="Delta",
+            )
         )
         df_long["Context"] = label
         df_long["region_full"] = df_long[cellid_key].map(region_full)
@@ -222,17 +223,14 @@ def cnd(
         before = len(df_long)
         df_long = df_long[df_long["Neighborhood"] == df_long["neigh_name"]].copy()
         after = len(df_long)
-        print(f"  - {label}: kept {after}/{before} ({after/before:.2%}) after assigned filter")
+        print(f"  - {label}: kept {after}/{before} ({after / before:.2%}) after assigned filter")
         melted_dfs.append(df_long)
 
     combined_melted = pd.concat(melted_dfs, ignore_index=True)
     print(f"✅ combined_melted (raw): {combined_melted.shape}")
 
     # ---- 6) MIN_COUNT filter on Neighborhood×Context (unique cellids) ----
-    combo_counts = (
-        combined_melted.groupby(["Neighborhood", "Context"])[cellid_key]
-        .nunique().reset_index(name="count")
-    )
+    combo_counts = combined_melted.groupby(["Neighborhood", "Context"])[cellid_key].nunique().reset_index(name="count")
     valid = combo_counts[combo_counts["count"] >= min_count][["Neighborhood", "Context"]]
     combined_melted = combined_melted.merge(valid, on=["Neighborhood", "Context"], how="inner")
     print(f"✅ combined_melted (MIN_COUNT≥{min_count}): {combined_melted.shape}")
@@ -249,14 +247,8 @@ def cnd(
         }
 
         # mean Δ and counts
-        mean_delta = (
-            combined_melted.groupby(["Context", "Neighborhood"])["Delta"]
-            .mean().reset_index(name="mean_delta")
-        )
-        cell_counts = (
-            combined_melted.groupby(["Context", "Neighborhood"])
-            .size().reset_index(name="n_cells")
-        )
+        mean_delta = combined_melted.groupby(["Context", "Neighborhood"])["Delta"].mean().reset_index(name="mean_delta")
+        cell_counts = combined_melted.groupby(["Context", "Neighborhood"]).size().reset_index(name="n_cells")
         plot_df = mean_delta.merge(cell_counts, on=["Context", "Neighborhood"])
 
         # pivot for row ordering by sum |mean Δ|
@@ -275,7 +267,6 @@ def cnd(
 
         # x-axis neighborhood order stays as "first-seen"
         neighborhood_order = list(pivot_df.columns)
-
 
         plot_df["Context"] = pd.Categorical(plot_df["Context"], categories=region_order, ordered=True)
         plot_df["Neighborhood"] = pd.Categorical(plot_df["Neighborhood"], categories=neighborhood_order, ordered=True)
@@ -310,17 +301,20 @@ def cnd(
         fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
         fig.subplots_adjust(right=0.80)
         ax.scatter(
-            plot_df["x"], plot_df["y"],
+            plot_df["x"],
+            plot_df["y"],
             s=plot_df["area"],
             c=plot_df["mean_delta"],
-            cmap="vlag", norm=norm,   # same look as your seaborn vlag
-            edgecolors="black", linewidths=0.5
+            cmap="vlag",
+            norm=norm,  # same look as your seaborn vlag
+            edgecolors="black",
+            linewidths=0.5,
         )
 
         ax.set_xticks(range(len(neighborhood_order)))
-        #ax.set_xticklabels(neighborhood_order, rotation=90, fontsize=25)
+        # ax.set_xticklabels(neighborhood_order, rotation=90, fontsize=25)
         ax.set_yticks(range(len(region_order)))
-        #ax.set_yticklabels(region_order, fontsize=25)
+        # ax.set_yticklabels(region_order, fontsize=25)
         ax.set_xticklabels(neighborhood_order, rotation=90, fontsize=18)
         ax.set_yticklabels(region_order, fontsize=20)
         n_rows = len(region_order)
@@ -364,7 +358,7 @@ def cnd(
             bbox_to_anchor=(0.90, 0.08),
             frameon=False,
             fontsize=25,
-            title_fontsize=25
+            title_fontsize=25,
         )
 
         # separate horizontal colorbar figure
@@ -395,7 +389,3 @@ def cnd(
         "fig": fig,
         "fig_cb": fig_cb,
     }
-
-
-
-

@@ -1,8 +1,6 @@
-import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-
-import anndata as ad
+import numpy as np
+import pandas as pd
 
 
 def plot_log2fc_vs_mean_abundance(
@@ -41,7 +39,6 @@ def plot_log2fc_vs_mean_abundance(
       y = mean neighborhood % abundance (linear)
     Dot size is proportional to subset % only (with minimum size).
     """
-
     # ---- get df from AnnData or DataFrame (no helper)
     if isinstance(data, pd.DataFrame):
         df = data
@@ -56,7 +53,7 @@ def plot_log2fc_vs_mean_abundance(
     if missing:
         raise ValueError(f"Input is missing required columns in obs/df: {missing}")
 
-    has_context = (context_key in df.columns)
+    has_context = context_key in df.columns
 
     df_neigh = df[df[neigh_key].astype(str) == str(neighborhood)].copy()
     if df_neigh.empty:
@@ -89,11 +86,7 @@ def plot_log2fc_vs_mean_abundance(
     # filter by min_count (global OR subset)
     global_pass = set(counts_global[counts_global > min_count].index)
     subset_pass = set(counts_subset[counts_subset > min_count].index)
-    ct_union = sorted(
-        global_pass.union(subset_pass),
-        key=lambda x: counts_global.get(x, 0),
-        reverse=True
-    )
+    ct_union = sorted(global_pass.union(subset_pass), key=lambda x: counts_global.get(x, 0), reverse=True)
 
     if len(ct_union) == 0:
         raise ValueError(f"No cell types > {min_count} to plot.")
@@ -135,9 +128,7 @@ def plot_log2fc_vs_mean_abundance(
         buckets = list(dict.fromkeys(ct_to_bucket.values()))
         cmap = plt.get_cmap("tab10")
         bucket_colors = {b: cmap(i % 10) for i, b in enumerate(buckets)}
-        plot_df["color"] = [
-            bucket_colors.get(ct_to_bucket.get(ct), "#999999") for ct in plot_df.index
-        ]
+        plot_df["color"] = [bucket_colors.get(ct_to_bucket.get(ct), "#999999") for ct in plot_df.index]
     else:
         plot_df["color"] = [cell_type_color_map.get(ct, "#999999") for ct in plot_df.index]
 

@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from typing import Optional
-
+import anndata as ad
 import numpy as np
 import pandas as pd
-import anndata as ad
 from anndata import AnnData
 
 

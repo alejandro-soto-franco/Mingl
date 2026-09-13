@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from typing import Dict, Iterable, Optional, Tuple, Union
+from collections.abc import Iterable
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
 
 
 def dpp(
-    delta: Union[pd.DataFrame, str],
+    delta: pd.DataFrame | str,
     *,
     # ---- wide -> long settings (if input is a wide csv/df) ----
     wide_delta_suffix: str = "_delta",
@@ -25,13 +25,13 @@ def dpp(
     delta_col: str = "Delta",
     # ---- patient parsing ----
     patient_split_char: str = "_",
-    patient_from_region: bool = True,     # matches your original: patient = region.split("_")[0]
+    patient_from_region: bool = True,  # matches your original: patient = region.split("_")[0]
     # ---- region -> context mapping ----
-    palette: Optional[Dict[str, str]] = None,
-    normal_regions: Optional[Iterable[str]] = None,
-    tumor_regions: Optional[Iterable[str]] = None,
-    metaplasia_regions: Optional[Iterable[str]] = None,
-    dysplasia_regions: Optional[Iterable[str]] = None,
+    palette: dict[str, str] | None = None,
+    normal_regions: Iterable[str] | None = None,
+    tumor_regions: Iterable[str] | None = None,
+    metaplasia_regions: Iterable[str] | None = None,
+    dysplasia_regions: Iterable[str] | None = None,
     unknown_label: str = "Unknown",
     # ---- plot params ----
     bar_height: float = 0.8,
@@ -39,7 +39,7 @@ def dpp(
     dpi: int = 150,
     # ---- show/return ----
     show: bool = True,
-) -> Dict[str, object]:
+) -> dict[str, object]:
     """
     Compute + plot patient divergence summaries from region×neighborhood mean deltas
     (scverse-friendly: takes either a wide csv/df or a long df).
@@ -53,7 +53,6 @@ def dpp(
       plot_df, mean_delta, region_scores, patient_totals_total, patient_totals_avg,
       region_order, neighborhood_order, patient_order_total, patient_order_avg
     """
-
     # -------------------------
     # Defaults: palette + region lists
     # -------------------------
@@ -70,14 +69,31 @@ def dpp(
         normal_regions = ["E08_reg002", "E08_reg003", "E17_reg001"]
     if tumor_regions is None:
         tumor_regions = [
-            "E08_reg004", "E08_reg005", "E11_reg001", "E19_reg003", "E19_reg004",
-            "E11_reg005", "E11_reg006", "E17_reg005",
+            "E08_reg004",
+            "E08_reg005",
+            "E11_reg001",
+            "E19_reg003",
+            "E19_reg004",
+            "E11_reg005",
+            "E11_reg006",
+            "E17_reg005",
         ]
     if metaplasia_regions is None:
         metaplasia_regions = [
-            "E08_reg006", "E08_reg007", "E11_reg002", "E11_reg003", "E11_reg004",
-            "E12_reg002", "E12_reg003", "E17_reg002", "E17_reg003", "E17_reg004",
-            "E19_reg001", "E12_reg004", "E12_reg005", "E17_reg006",
+            "E08_reg006",
+            "E08_reg007",
+            "E11_reg002",
+            "E11_reg003",
+            "E11_reg004",
+            "E12_reg002",
+            "E12_reg003",
+            "E17_reg002",
+            "E17_reg003",
+            "E17_reg004",
+            "E19_reg001",
+            "E12_reg004",
+            "E12_reg005",
+            "E17_reg006",
         ]
     if dysplasia_regions is None:
         dysplasia_regions = ["E08_reg001", "E12_reg001", "E19_reg002"]
@@ -113,9 +129,7 @@ def dpp(
         # expect WIDE format with *_delta cols
         delta_cols = [c for c in df.columns if str(c).endswith(wide_delta_suffix)]
         if not delta_cols:
-            raise ValueError(
-                "Input is not LONG (needs region/Neighborhood/Delta) and has no *_delta columns for WIDE."
-            )
+            raise ValueError("Input is not LONG (needs region/Neighborhood/Delta) and has no *_delta columns for WIDE.")
 
         if derive_region_if_missing and region_col not in df.columns:
             if cellid_col not in df.columns:
@@ -128,8 +142,8 @@ def dpp(
             var_name=neighborhood_col,
             value_name=delta_col,
         )
-        long_df[neighborhood_col] = long_df[neighborhood_col].astype(str).str.replace(
-            wide_delta_suffix, "", regex=False
+        long_df[neighborhood_col] = (
+            long_df[neighborhood_col].astype(str).str.replace(wide_delta_suffix, "", regex=False)
         )
     else:
         long_df = df
@@ -159,16 +173,8 @@ def dpp(
     # -------------------------
     # mean_delta + plot_df (mean + n_cells)
     # -------------------------
-    mean_delta = (
-        long_df.groupby([region_col, neighborhood_col])[delta_col]
-        .mean()
-        .reset_index(name="mean_delta")
-    )
-    cell_counts = (
-        long_df.groupby([region_col, neighborhood_col])
-        .size()
-        .reset_index(name="n_cells")
-    )
+    mean_delta = long_df.groupby([region_col, neighborhood_col])[delta_col].mean().reset_index(name="mean_delta")
+    cell_counts = long_df.groupby([region_col, neighborhood_col]).size().reset_index(name="n_cells")
     plot_df = mean_delta.merge(cell_counts, on=[region_col, neighborhood_col])
 
     # -------------------------
@@ -193,11 +199,7 @@ def dpp(
         {"region": pivot_df.index, "patient": patients.values, "enrichment": enrichment_score.values}
     ).set_index("region")
 
-    region_order = (
-        sort_df.sort_values(["patient", "enrichment"], ascending=[True, False])
-        .index
-        .tolist()
-    )
+    region_order = sort_df.sort_values(["patient", "enrichment"], ascending=[True, False]).index.tolist()
     neighborhood_order = list(pivot_df.columns)
 
     # -------------------------
@@ -205,15 +207,11 @@ def dpp(
     # -------------------------
     region_scores = plot_df[[region_col, "mean_delta"]].copy()
     region_scores["region_score"] = region_scores["mean_delta"].abs()
-    region_scores = (
-        region_scores.groupby(region_col, as_index=False)
-        .agg(region_score=("region_score", "sum"))
-    )
+    region_scores = region_scores.groupby(region_col, as_index=False).agg(region_score=("region_score", "sum"))
     region_scores["patient"] = region_scores[region_col].astype(str).str.split(patient_split_char, n=1).str[0]
 
-    patient_totals = (
-        region_scores.groupby("patient", as_index=False)
-        .agg(total_divergence=("region_score", "sum"), n_regions=(region_col, "nunique"))
+    patient_totals = region_scores.groupby("patient", as_index=False).agg(
+        total_divergence=("region_score", "sum"), n_regions=(region_col, "nunique")
     )
     patient_totals["normalized_divergence"] = patient_totals["total_divergence"] / patient_totals["n_regions"]
 
@@ -244,16 +242,15 @@ def dpp(
     y_pos1 = np.arange(len(patient_order_total))
 
     for i, patient in enumerate(patient_order_total):
-        parts = region_scores_sorted[region_scores_sorted["patient"] == patient].sort_values("region_score", ascending=False)
+        parts = region_scores_sorted[region_scores_sorted["patient"] == patient].sort_values(
+            "region_score", ascending=False
+        )
         left = 0.0
         for _, r in parts.iterrows():
             val = float(r["region_score"])
             ctx = map_region_to_context(str(r[region_col]))
             color = palette.get(ctx, palette.get(unknown_label, "gray"))
-            ax_total.barh(
-                i, val, left=left, height=bar_height,
-                color=color, edgecolor="black", linewidth=0.3
-            )
+            ax_total.barh(i, val, left=left, height=bar_height, color=color, edgecolor="black", linewidth=0.3)
             left += val
 
     ax_total.set_yticks(y_pos1)

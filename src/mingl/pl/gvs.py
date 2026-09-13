@@ -1,23 +1,23 @@
 import re
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from collections.abc import Sequence
 
+import anndata as ad
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import anndata as ad
 
- 
+
 def plot_global_vs_subset_horizontal_buckets(
-    data: Union[pd.DataFrame, ad.AnnData],
+    data: pd.DataFrame | ad.AnnData,
     neighborhood: str,
-    bucket_map: Dict[str, List[str]],
-    cell_type_color_map: Dict[str, str],
+    bucket_map: dict[str, list[str]],
+    cell_type_color_map: dict[str, str],
     min_count: int = 10,
-    subset_region: Optional[str] = None,
-    subset_patient: Optional[str] = None,
-    subset_context: Optional[str] = None,
+    subset_region: str | None = None,
+    subset_patient: str | None = None,
+    subset_context: str | None = None,
     patient_split_sep: str = "_",
-    figsize: Tuple[int, int] = (18, 5),
+    figsize: tuple[int, int] = (18, 5),
     title_fontsize: int = 25,
     label_fontsize: int = 25,
     show_context: bool = False,
@@ -33,7 +33,6 @@ def plot_global_vs_subset_horizontal_buckets(
       - `data` can be AnnData (uses data.obs) OR a pandas DataFrame.
       - keys are configurable (region_key, neigh_key, cluster_key, context_key)
     """
-
     # ---- get dataframe from AnnData or df directly (no helper)
     if isinstance(data, pd.DataFrame):
         df = data
@@ -49,7 +48,7 @@ def plot_global_vs_subset_horizontal_buckets(
         raise ValueError(f"Input is missing required columns in obs/df: {missing}")
 
     # optional context presence
-    has_context = (context_key in df.columns)
+    has_context = context_key in df.columns
 
     # filter to neighborhood
     df_neigh = df[df[neigh_key].astype(str) == str(neighborhood)].copy()
@@ -108,33 +107,18 @@ def plot_global_vs_subset_horizontal_buckets(
             ax.spines[spine].set_visible(False)
 
         if len(present_cts) == 0:
-            ax.text(
-                0.5, 0.5, "No cell types\nin bucket",
-                ha="center", va="center", fontsize=14, transform=ax.transAxes
-            )
+            ax.text(0.5, 0.5, "No cell types\nin bucket", ha="center", va="center", fontsize=14, transform=ax.transAxes)
             ax.grid(False)
             continue
 
         # counts computed within the neighborhood (global) and within subset (subset)
-        counts_global = (
-            df_neigh[df_neigh[cluster_key].isin(present_cts)]
-            .groupby(cluster_key)
-            .size()
-        )
-        counts_subset = (
-            subset_df[subset_df[cluster_key].isin(present_cts)]
-            .groupby(cluster_key)
-            .size()
-        )
+        counts_global = df_neigh[df_neigh[cluster_key].isin(present_cts)].groupby(cluster_key).size()
+        counts_subset = subset_df[subset_df[cluster_key].isin(present_cts)].groupby(cluster_key).size()
 
         # union of CTs that pass min_count in global OR subset
         global_pass = set(counts_global[counts_global > min_count].index.tolist())
         subset_pass = set(counts_subset[counts_subset > min_count].index.tolist())
-        ct_union = sorted(
-            global_pass.union(subset_pass),
-            key=lambda x: counts_global.get(x, 0),
-            reverse=True
-        )
+        ct_union = sorted(global_pass.union(subset_pass), key=lambda x: counts_global.get(x, 0), reverse=True)
 
         if len(ct_union) == 0:
             empty_msg = (
@@ -142,10 +126,7 @@ def plot_global_vs_subset_horizontal_buckets(
                 if context_mode
                 else f"No cell types > {min_count} in neighborhood or subset"
             )
-            ax.text(
-                0.5, 0.5, empty_msg,
-                ha="center", va="center", fontsize=14, style="italic", transform=ax.transAxes
-            )
+            ax.text(0.5, 0.5, empty_msg, ha="center", va="center", fontsize=14, style="italic", transform=ax.transAxes)
             ax.grid(False)
             continue
 
@@ -158,11 +139,7 @@ def plot_global_vs_subset_horizontal_buckets(
             pct_global.append((g / denom_global_neigh * 100) if (g > min_count) else 0.0)
             pct_subset.append((s / denom_subset_neigh * 100) if (s > min_count) else 0.0)
 
-        plot_df = pd.DataFrame(
-            [pct_global, pct_subset],
-            index=["Global", subset_label],
-            columns=ct_union
-        )
+        plot_df = pd.DataFrame([pct_global, pct_subset], index=["Global", subset_label], columns=ct_union)
 
         colors = [cell_type_color_map.get(ct, "#999999") for ct in plot_df.columns]
 
@@ -207,7 +184,7 @@ def plot_global_vs_subset_horizontal_buckets(
         return fig
 
 
-def auto_assign_buckets(unique_cts: Sequence[str]) -> Tuple[List[str], List[str], List[str]]:
+def auto_assign_buckets(unique_cts: Sequence[str]) -> tuple[list[str], list[str], list[str]]:
     epikeys = [r"\bepithel", r"\benter", r"\bgoblet", r"\bkeratin", r"\bcolono", r"\bpaneth"]
     mesokeys = [r"\bfibro", r"\bfibrobla", r"\bendothel", r"\bpericyte", r"\bmesench"]
     immunekeys = [r"\bt\s?cell", r"\bb\s?cell", r"\bmacroph", r"\bdendrit", r"\bnk\b", r"\bneutroph", r"\bmonocyte"]
@@ -222,19 +199,25 @@ def auto_assign_buckets(unique_cts: Sequence[str]) -> Tuple[List[str], List[str]
 
         for p in epikeys:
             if re.search(p, name):
-                epithelial.append(str(ct)); assigned = True; break
+                epithelial.append(str(ct))
+                assigned = True
+                break
         if assigned:
             continue
 
         for p in mesokeys:
             if re.search(p, name):
-                mesenchymal.append(str(ct)); assigned = True; break
+                mesenchymal.append(str(ct))
+                assigned = True
+                break
         if assigned:
             continue
 
         for p in immunekeys:
             if re.search(p, name):
-                immune.append(str(ct)); assigned = True; break
+                immune.append(str(ct))
+                assigned = True
+                break
 
     return sorted(set(epithelial)), sorted(set(mesenchymal)), sorted(set(immune))
 

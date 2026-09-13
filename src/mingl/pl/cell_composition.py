@@ -1,9 +1,6 @@
-import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
 
 
@@ -48,7 +45,7 @@ def cell_type_distributions(
     # robust qcut binning
     # ---------------------------
     canonical_bins = list(canonical_bins)
-    weights = {b: 2 ** i for i, b in enumerate(canonical_bins)}
+    weights = {b: 2**i for i, b in enumerate(canonical_bins)}
 
     def robust_qcut_to_bins(series, desired_q=(0, 0.2, 0.4, 0.6, 0.8, 1.0)):
         s = series.dropna()
@@ -105,9 +102,7 @@ def cell_type_distributions(
         rank_rows.append({"cluster": cl, "weighted_prop": weighted_prop, "total": n})
 
     rank_df = (
-        pd.DataFrame(rank_rows)
-        .sort_values(["weighted_prop", "total"], ascending=[False, False])
-        .reset_index(drop=True)
+        pd.DataFrame(rank_rows).sort_values(["weighted_prop", "total"], ascending=[False, False]).reset_index(drop=True)
     )
 
     global_cluster_order = rank_df["cluster"].tolist()
@@ -145,17 +140,14 @@ def cell_type_distributions(
     cell_types = sorted(combined_subset[cell_type_key].dropna().astype(str).unique())
     n = len(cell_types)
 
-    palette_names = ['tab20', 'Set3', 'Set2', 'Paired', 'Dark2', 'Accent']
+    palette_names = ["tab20", "Set3", "Set2", "Paired", "Dark2", "Accent"]
     combined_colors = []
 
     for name in palette_names:
         combined_colors.extend(sns.color_palette(name))
 
     if len(combined_colors) < n:
-        raise ValueError(
-            f"Not enough distinct colors for {n} cell types. "
-            f"Max supported is {len(combined_colors)}."
-        )
+        raise ValueError(f"Not enough distinct colors for {n} cell types. Max supported is {len(combined_colors)}.")
 
     final_palette = combined_colors[:n]
     color_dict = dict(zip(cell_types, final_palette))
@@ -175,9 +167,7 @@ def cell_type_distributions(
                 perc[ct][i] = ((mask) & (ct_series == ct)).sum() / total * 100
         return perc
 
-    combined_perc = compute_percent_matrix(
-        combined_subset, cluster_order_to_plot, cell_types
-    )
+    combined_perc = compute_percent_matrix(combined_subset, cluster_order_to_plot, cell_types)
 
     # ---------------------------
     # plotting
@@ -236,6 +226,3 @@ def cell_type_distributions(
     if return_fig:
         return fig, ax, rank_df, combined_perc
     return ax, rank_df, combined_perc
-
-
-

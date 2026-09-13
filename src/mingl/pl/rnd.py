@@ -4,18 +4,18 @@
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from collections.abc import Iterable
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 
 
 def rnd(
-    delta: Union[pd.DataFrame, str],
+    delta: pd.DataFrame | str,
     *,
     # required columns (long format)
     region_col: str = "region",
@@ -34,27 +34,27 @@ def rnd(
     min_cells_per_region_neigh: int = 10,
     keep_only_assigned_neighborhood: bool = True,
     # context coloring for the bar plot
-    palette: Optional[Dict[str, str]] = None,
-    normal_regions: Optional[Iterable[str]] = None,
-    tumor_regions: Optional[Iterable[str]] = None,
-    metaplasia_regions: Optional[Iterable[str]] = None,
-    dysplasia_regions: Optional[Iterable[str]] = None,
+    palette: dict[str, str] | None = None,
+    normal_regions: Iterable[str] | None = None,
+    tumor_regions: Iterable[str] | None = None,
+    metaplasia_regions: Iterable[str] | None = None,
+    dysplasia_regions: Iterable[str] | None = None,
     unknown_label: str = "Unknown",
     # sizing
     min_area: float = 40.0,
     max_area: float = 1200.0,
     orig_fig_width: float = 36.0,
-    new_fig_width: float =30.0,
+    new_fig_width: float = 30.0,
     fig_height: float = 24.0,
     dpi: int = 35,
     # colormap
     cmap_name: str = "vlag",
     # legend
-    legend_props: Tuple[float, float, float] = (0.05, 0.25, 0.50),
+    legend_props: tuple[float, float, float] = (0.05, 0.25, 0.50),
     legend_title: str = "Proportion of\nRegion",
     # show/return
     show: bool = True,
-) -> Tuple[plt.Figure, plt.Axes, plt.Figure, pd.DataFrame]:
+) -> tuple[plt.Figure, plt.Axes, plt.Figure, pd.DataFrame]:
     # -------------------------
     # Defaults: palette + region lists
     # -------------------------
@@ -71,14 +71,31 @@ def rnd(
         normal_regions = ["E08_reg002", "E08_reg003", "E17_reg001"]
     if tumor_regions is None:
         tumor_regions = [
-            "E08_reg004", "E08_reg005", "E11_reg001", "E19_reg003", "E19_reg004",
-            "E11_reg005", "E11_reg006", "E17_reg005",
+            "E08_reg004",
+            "E08_reg005",
+            "E11_reg001",
+            "E19_reg003",
+            "E19_reg004",
+            "E11_reg005",
+            "E11_reg006",
+            "E17_reg005",
         ]
     if metaplasia_regions is None:
         metaplasia_regions = [
-            "E08_reg006", "E08_reg007", "E11_reg002", "E11_reg003", "E11_reg004",
-            "E12_reg002", "E12_reg003", "E17_reg002", "E17_reg003", "E17_reg004",
-            "E19_reg001", "E12_reg004", "E12_reg005", "E17_reg006",
+            "E08_reg006",
+            "E08_reg007",
+            "E11_reg002",
+            "E11_reg003",
+            "E11_reg004",
+            "E12_reg002",
+            "E12_reg003",
+            "E17_reg002",
+            "E17_reg003",
+            "E17_reg004",
+            "E19_reg001",
+            "E12_reg004",
+            "E12_reg005",
+            "E17_reg006",
         ]
     if dysplasia_regions is None:
         dysplasia_regions = ["E08_reg001", "E12_reg001", "E19_reg002"]
@@ -114,8 +131,7 @@ def rnd(
     if not is_long:
         if not is_wide:
             raise ValueError(
-                "Input does not look like LONG (needs region/Neighborhood/Delta) "
-                "or WIDE (needs *_delta columns)."
+                "Input does not look like LONG (needs region/Neighborhood/Delta) or WIDE (needs *_delta columns)."
             )
         # WIDE -> LONG (compatible with your original script)
         wide = df
@@ -131,8 +147,8 @@ def rnd(
             var_name=neighborhood_col,
             value_name=delta_col,
         )
-        long_df[neighborhood_col] = long_df[neighborhood_col].astype(str).str.replace(
-            wide_delta_suffix, "", regex=False
+        long_df[neighborhood_col] = (
+            long_df[neighborhood_col].astype(str).str.replace(wide_delta_suffix, "", regex=False)
         )
         # match user’s names for filtering later
         long_df = long_df.rename(
@@ -176,16 +192,8 @@ def rnd(
     # -------------------------
     # Compute mean Δ + n_cells
     # -------------------------
-    mean_delta = (
-        long_df.groupby([region_col, neighborhood_col])[delta_col]
-        .mean()
-        .reset_index(name="mean_delta")
-    )
-    cell_counts = (
-        long_df.groupby([region_col, neighborhood_col])
-        .size()
-        .reset_index(name="n_cells")
-    )
+    mean_delta = long_df.groupby([region_col, neighborhood_col])[delta_col].mean().reset_index(name="mean_delta")
+    cell_counts = long_df.groupby([region_col, neighborhood_col]).size().reset_index(name="n_cells")
     plot_df = mean_delta.merge(cell_counts, on=[region_col, neighborhood_col])
 
     # -------------------------
@@ -198,8 +206,8 @@ def rnd(
     pivot_df = pivot_df.reindex(index=all_regions, columns=all_neighborhoods)
 
     sum_abs = pivot_df.abs().sum(axis=1)
-    region_order: List[str] = sum_abs.sort_values(ascending=False).index.tolist()
-    neighborhood_order: List[str] = list(pivot_df.columns)
+    region_order: list[str] = sum_abs.sort_values(ascending=False).index.tolist()
+    neighborhood_order: list[str] = list(pivot_df.columns)
 
     # Categorical ordering for plotting
     plot_df[region_col] = pd.Categorical(plot_df[region_col], categories=region_order, ordered=True)
@@ -232,7 +240,7 @@ def rnd(
     # =========================
     # MAIN DOT + BAR PLOT
     # =========================
-    marker_scale = 1#(orig_fig_width / new_fig_width) ** 2
+    marker_scale = 1  # (orig_fig_width / new_fig_width) ** 2
 
     plt.close("all")
     fig, ax = plt.subplots(figsize=(new_fig_width, fig_height), dpi=dpi)
@@ -242,11 +250,14 @@ def rnd(
     ax_bar = fig.add_axes([0.82, pos.y0, 0.16, pos.height])  # fixed right panel
 
     ax.scatter(
-        plot_df["x"], plot_df["y"],
+        plot_df["x"],
+        plot_df["y"],
         s=plot_df["area"] * marker_scale,
         c=plot_df["mean_delta"],
-        cmap=cmap, norm=norm,
-        edgecolors="black", linewidths=0.5,
+        cmap=cmap,
+        norm=norm,
+        edgecolors="black",
+        linewidths=0.5,
     )
 
     ax.set_xticks(range(len(neighborhood_order)))
@@ -297,7 +308,9 @@ def rnd(
     for p in legend_props:
         area = float(np.clip(p * (max_area - min_area) + min_area, min_area, max_area))
         h = plt.scatter(
-            [], [], s=area * marker_scale,
+            [],
+            [],
+            s=area * marker_scale,
             facecolors="lightgray",
             edgecolors="black",
             linewidths=0.6,

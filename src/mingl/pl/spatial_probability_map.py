@@ -1,6 +1,6 @@
-import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 from ..tl.knn2 import KNN2
 
@@ -13,14 +13,14 @@ def spatial_probability_mapping(
     k=300,
     batch_size=20000,
     desired_region="B008_Sigmoid",
-    reg = "unique_region",
-    cluster_col = "Community",
-    X = "x" , # Variable for the X coordinate
-    Y = "y",  # Variable for the Y coordinate
-    neigh = "Neighborhood",
-    tiss_unit = "Tissue Unit",
-    cell_type = "Cell Type",
-    return_fig = False,
+    reg="unique_region",
+    cluster_col="Community",
+    X="x",  # Variable for the X coordinate
+    Y="y",  # Variable for the Y coordinate
+    neigh="Neighborhood",
+    tiss_unit="Tissue Unit",
+    cell_type="Cell Type",
+    return_fig=False,
 ):
     # Equivalent to: df = pd.read_csv(...)
     df = adata.obs.copy()
@@ -28,11 +28,19 @@ def spatial_probability_mapping(
 
     # KNN
     cells = df
-    
+
     keep_cols = [X, Y, reg, cluster_col, tiss_unit, neigh, cell_type]
-    ks = sorted(set([10,100,300,k]))
+    ks = sorted(set([10, 100, 300, k]))
     # IMPORTANT CHANGE: KNN takes adata (per your note)
-    windows = KNN2(adata, x_key=X, y_key=Y, region_key=reg, cluster_col=cluster_col, keep_obs_cols=keep_cols, ks=ks,)
+    windows = KNN2(
+        adata,
+        x_key=X,
+        y_key=Y,
+        region_key=reg,
+        cluster_col=cluster_col,
+        keep_obs_cols=keep_cols,
+        ks=ks,
+    )
     k = k
     windows2 = windows[k].copy()
 
@@ -41,7 +49,6 @@ def spatial_probability_mapping(
     windows2[cluster_col] = cells[cluster_col]
 
     # communties
-    
 
     # Adjust batch size according to your GPU memory (~8GB)
     batch_size = batch_size

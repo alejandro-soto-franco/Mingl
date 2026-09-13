@@ -1,13 +1,14 @@
 # compute_proportions.py
-from typing import Optional, Union
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 from anndata import AnnData
-from .utils_adata import build_df_probs_from_adata, _fuzzy_col_matches
+
+from .utils_adata import _fuzzy_col_matches, build_df_probs_from_adata
 
 
 def compute_grouped_proportions(
-    df_or_adata: Union[pd.DataFrame, AnnData],
+    df_or_adata: pd.DataFrame | AnnData,
     n1: str,
     n2: str,
     *,
@@ -25,7 +26,9 @@ def compute_grouped_proportions(
 
     # detect the cell_type column (allow fuzzy names)
     if cell_type_col not in df.columns:
-        ct_candidates = [c for c in df.columns if c.lower().replace(" ", "") in ("celltype","celllabel","cell_label","cell_types")]
+        ct_candidates = [
+            c for c in df.columns if c.lower().replace(" ", "") in ("celltype", "celllabel", "cell_label", "cell_types")
+        ]
         if ct_candidates:
             cell_type_col_local = ct_candidates[0]
             df[cell_type_col] = df[cell_type_col_local].astype(str)
@@ -35,7 +38,7 @@ def compute_grouped_proportions(
         cell_type_col_local = cell_type_col
 
     # fuzzy match n1/n2 to probability column names (prefer numeric columns)
-    def _find_column_for_name(name: str) -> Optional[str]:
+    def _find_column_for_name(name: str) -> str | None:
         # first try direct in df
         if name in df.columns:
             return name
@@ -53,7 +56,11 @@ def compute_grouped_proportions(
 
     if col_n1 is None or col_n2 is None:
         # if missing, attempt to detect label-based subsets (like 'Neighborhood' or 'subset'). If unavailable, error.
-        label_cols = [c for c in df.columns if c.lower() in ("subset","neighborhood","label","assigned","cn","neighborhood_label")]
+        label_cols = [
+            c
+            for c in df.columns
+            if c.lower() in ("subset", "neighborhood", "label", "assigned", "cn", "neighborhood_label")
+        ]
         if label_cols:
             label_col = label_cols[0]
             mask1 = df[label_col].astype(str) == n1
@@ -62,7 +69,9 @@ def compute_grouped_proportions(
             both = df[mask1 & mask2]
             only_2 = df[~mask1 & mask2]
         else:
-            raise KeyError(f"Could not find probability columns for {n1!r} and/or {n2!r}. Tried columns: {list(df.columns)[:50]}")
+            raise KeyError(
+                f"Could not find probability columns for {n1!r} and/or {n2!r}. Tried columns: {list(df.columns)[:50]}"
+            )
     else:
         # coerce to numeric probabilities
         p1 = pd.to_numeric(df[col_n1], errors="coerce").fillna(0.0).astype(float)

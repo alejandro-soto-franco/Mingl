@@ -1,22 +1,24 @@
 from __future__ import annotations
-from typing import Optional, Union, Sequence
 
+from collections.abc import Sequence
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
 from anndata import AnnData
 
-from ._utils import save_figure
 from ..tl.edges import findPositives
+from ._utils import save_figure
+
 
 def edges_positive_probability(
     adata: AnnData,
     *,
     prob_key: str = "neighborhood_probabilities",
-    neighborhoods_to_loop: Optional[Sequence[str]] = None,
+    neighborhoods_to_loop: Sequence[str] | None = None,
     threshold: float = 0.25,
-    figsize: Union[float, tuple[float, float]] = 15,
+    figsize: float | tuple[float, float] = 15,
     dpi: int = 300,
     palette: str = "tab20",
     legend: bool = True,
@@ -24,9 +26,9 @@ def edges_positive_probability(
     legend_title_fontsize: float = 25.0,
     legend_fontsize: float = 25.0,
     title_fontsize: float = 35.0,
-    show: Optional[bool] = None,
-    save: Union[bool, str, None] = None,
-    ax: Optional[plt.Axes] = None,
+    show: bool | None = None,
+    save: bool | str | None = None,
+    ax: plt.Axes | None = None,
 ):
     """
     Plot distributions of neighborhood probabilities for neighborhoods that are
@@ -85,9 +87,7 @@ def edges_positive_probability(
     else:
         arr = np.asarray(prob_raw)
         if arr.shape[0] != adata.n_obs:
-            raise ValueError(
-                f"adata.obsm[{prob_key!r}] has {arr.shape[0]} rows but adata.n_obs is {adata.n_obs}"
-            )
+            raise ValueError(f"adata.obsm[{prob_key!r}] has {arr.shape[0]} rows but adata.n_obs is {adata.n_obs}")
         cols = [f"N{i}" for i in range(arr.shape[1])]
         probabilities_df = pd.DataFrame(arr, index=adata.obs_names, columns=cols)
 
@@ -100,7 +100,9 @@ def edges_positive_probability(
         probabilities_df = probabilities_df.loc[:, cols_to_keep]
 
     # attach Count_Above_Threshold
-    probabilities_df["Count_Above_Threshold"] = adata.obs["Count_Above_Threshold"].reindex(probabilities_df.index).astype(int)
+    probabilities_df["Count_Above_Threshold"] = (
+        adata.obs["Count_Above_Threshold"].reindex(probabilities_df.index).astype(int)
+    )
 
     # --- For each cell, produce a sorted list of positive neighborhoods (> threshold) ---
     prob_cols = [c for c in probabilities_df.columns if c != "Count_Above_Threshold"]
@@ -114,12 +116,14 @@ def edges_positive_probability(
 
     # Create Neighborhood1..N and Prob1..N columns
     for i in range(max_n):
-        neigh_col = f"Neighborhood{i+1}"
-        prob_col = f"Prob{i+1}"
+        neigh_col = f"Neighborhood{i + 1}"
+        prob_col = f"Prob{i + 1}"
         probabilities_df[neigh_col] = sorted_neighs.apply(lambda x, i=i: x[i] if len(x) > i else None)
         # assign probability values (None -> NaN)
         probabilities_df[prob_col] = probabilities_df.apply(
-            lambda row, neigh_col=neigh_col: (row[neigh_col] and row.get(row[neigh_col])) if pd.notna(row[neigh_col]) else None,
+            lambda row, neigh_col=neigh_col: (
+                (row[neigh_col] and row.get(row[neigh_col])) if pd.notna(row[neigh_col]) else None
+            ),
             axis=1,
         )
         probabilities_df[prob_col] = pd.to_numeric(probabilities_df[prob_col], errors="coerce")
@@ -130,7 +134,7 @@ def edges_positive_probability(
         raise ValueError("No cells with Count_Above_Threshold > 0 after processing.")
 
     # Melt into long form for plotting
-    prob_col_names = [f"Prob{i+1}" for i in range(max_n)]
+    prob_col_names = [f"Prob{i + 1}" for i in range(max_n)]
     long_df = pd.melt(
         subset,
         id_vars="Count_Above_Threshold",

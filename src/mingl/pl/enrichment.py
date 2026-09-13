@@ -11,13 +11,15 @@ probability-like columns. It can optionally use tqdm to show progress.
 Usage:
     figs = plot_border_enrichment(..., label_dots=True)
 """
-from typing import Optional, Tuple, Sequence, Dict, List, Tuple as Tup
+
+from collections.abc import Sequence
+from typing import Any
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
 from anndata import AnnData
-from typing import Any
+from matplotlib.patches import Patch
 
 # tqdm is optional; used only if use_tqdm_for_count=True
 try:
@@ -25,13 +27,12 @@ try:
 except Exception:
     tqdm = None  # type: ignore
 
-from ..tl.utils_adata import build_df_probs_from_adata
 from ..tl.compute_proportions import compute_grouped_proportions
-
+from ..tl.utils_adata import build_df_probs_from_adata
 
 # ---------------- DEFAULT CONFIG ----------------
 MIN_COUNT = 5
-POS_THRESHOLD = 0.25   # used for plotting / border masks
+POS_THRESHOLD = 0.25  # used for plotting / border masks
 EPS = 1e-9
 LOG_BASE = 2
 
@@ -44,9 +45,7 @@ LEGEND_COUNTS = np.array([2000, 5000, 20000], dtype=int)
 # ------------------------------------------------
 
 
-
-
-def find_prob_col(df: pd.DataFrame, name: str) -> Optional[str]:
+def find_prob_col(df: pd.DataFrame, name: str) -> str | None:
     """Notebook-style fuzzy finder for a probability column name."""
     if name in df.columns:
         return name
@@ -61,18 +60,15 @@ def find_prob_col(df: pd.DataFrame, name: str) -> Optional[str]:
     return None
 
 
-
-
 def _count_to_area_linear(k: int, max_count: int, min_area: float = MIN_AREA, max_area: float = MAX_AREA) -> float:
     if max_count <= 0:
         return float(min_area)
     return float(min_area + (k / float(max_count)) * (max_area - min_area))
 
 
-
-
-def make_celltype_palette_from_adata(cell_types: Sequence[str]) -> Dict[str, Tup[float, float, float]]:
+def make_celltype_palette_from_adata(cell_types: Sequence[str]) -> dict[str, tuple[float, float, float]]:
     import seaborn as sns
+
     palette_names = ["tab20", "Set3", "Set2", "Paired", "Dark2", "Accent"]
     colors = []
     for name in palette_names:
@@ -88,8 +84,6 @@ def make_celltype_palette_from_adata(cell_types: Sequence[str]) -> Dict[str, Tup
     return dict(zip(cell_types, final))
 
 
-
-
 def _normalize_subset_labels(df_plot: pd.DataFrame, n1: str, n2: str) -> pd.DataFrame:
     """
     Normalize the 'Subset' values to canonical forms:
@@ -99,7 +93,6 @@ def _normalize_subset_labels(df_plot: pd.DataFrame, n1: str, n2: str) -> pd.Data
     Returns a copy of df_plot with Subset normalized.
     """
     joint_name = f"{n1} +\n{n2}"
-
 
     def map_label(s: str) -> str:
         if not isinstance(s, str):
@@ -137,44 +130,40 @@ def _normalize_subset_labels(df_plot: pd.DataFrame, n1: str, n2: str) -> pd.Data
             return n2
         return s_strip
 
-
     out = df_plot.copy()
     out["Subset"] = out["Subset"].astype(str).apply(map_label)
     return out
 
 
-
-
 def plot_border_enrichment(
     *,
-    adata: Optional[AnnData] = None,
-    df_probabilities: Optional[pd.DataFrame] = None,
+    adata: AnnData | None = None,
+    df_probabilities: pd.DataFrame | None = None,
     n1: str,
     n2: str,
     cell_type_col: str = "Cell Type",
     pos_threshold: float = POS_THRESHOLD,
     min_count: int = MIN_COUNT,
     prob_key: str = "neighborhood_probabilities",
-    color_dict: Optional[Dict[str, Tup[float, float, float]]] = None,
-    legend_counts: Optional[Sequence[int]] = None,
+    color_dict: dict[str, tuple[float, float, float]] | None = None,
+    legend_counts: Sequence[int] | None = None,
     show: bool = True,
     dpi: int = 300,
     # --- labeling parameters ---
     label_dots: bool = False,
-    label_cts: Optional[Sequence[str]] = None,  # if provided, only label these cell types (must be subset of kept_cts)
+    label_cts: Sequence[str] | None = None,  # if provided, only label these cell types (must be subset of kept_cts)
     label_fontsize: int = 8,
     label_offset_frac: float = 0.02,
     label_color: str = "black",
-    label_bbox: Optional[Dict[str, Any]] = None,
-    neighborhoods_to_count: Optional[Sequence[str]] = None,
+    label_bbox: dict[str, Any] | None = None,
+    neighborhoods_to_count: Sequence[str] | None = None,
     neighborhood_count_threshold: float = NEIGHBORHOOD_COUNT_DEFAULT_THRESHOLD,
     use_tqdm_for_count: bool = False,
-) -> Tuple[plt.Figure, plt.Figure, plt.Figure]:
+) -> tuple[plt.Figure, plt.Figure, plt.Figure]:
 
     if legend_counts is None:
         legend_counts = LEGEND_COUNTS
     legend_counts = np.array(list(legend_counts), dtype=int)
-
 
     # build df_probabilities if necessary
     if df_probabilities is None:
@@ -182,20 +171,21 @@ def plot_border_enrichment(
             raise ValueError("Please pass either `adata` or `df_probabilities`.")
         df_probabilities, _ = build_df_probs_from_adata(adata, prob_key=prob_key, cell_type_col=cell_type_col)
 
-
     df_probabilities = df_probabilities.copy()
-
 
     # ensure cell-type column present
     if cell_type_col not in df_probabilities.columns:
-        ct_candidates = [c for c in df_probabilities.columns if c.lower().replace(" ", "") in ("celltype", "celllabel", "cell_label", "cell_types")]
+        ct_candidates = [
+            c
+            for c in df_probabilities.columns
+            if c.lower().replace(" ", "") in ("celltype", "celllabel", "cell_label", "cell_types")
+        ]
         if ct_candidates:
             df_probabilities[cell_type_col] = df_probabilities[ct_candidates[0]].astype(str)
         elif adata is not None and cell_type_col in adata.obs.columns:
             df_probabilities[cell_type_col] = adata.obs[cell_type_col].reindex(df_probabilities.index).astype(str)
         else:
             raise KeyError(f"No cell-type column found. Need '{cell_type_col}' or an alternative.")
-
 
     # --- NEW: compute per-row count of neighborhoods above neighborhood_count_threshold ---
     # If neighborhoods_to_count is provided, use those columns (must exist in df_probabilities).
@@ -263,31 +253,30 @@ def plot_border_enrichment(
                 df_probabilities["Count_Above_Neigh_Thresh"] = counts
             else:
                 # fast vectorized
-                df_probabilities["Count_Above_Neigh_Thresh"] = (df_neigh > float(neighborhood_count_threshold)).sum(axis=1).astype(int)
+                df_probabilities["Count_Above_Neigh_Thresh"] = (
+                    (df_neigh > float(neighborhood_count_threshold)).sum(axis=1).astype(int)
+                )
     except Exception:
         # conservative fallback to avoid breaking existing logic
         df_probabilities["Count_Above_Neigh_Thresh"] = 0
     # --- end NEW block ---
 
-
     # compute grouped proportions (returns Subset labels that may be 'X only', 'X + Y', etc.)
-    df_plot = compute_grouped_proportions(df_probabilities, n1, n2, cell_type_col=cell_type_col, threshold=pos_threshold, prob_key=prob_key)
-
+    df_plot = compute_grouped_proportions(
+        df_probabilities, n1, n2, cell_type_col=cell_type_col, threshold=pos_threshold, prob_key=prob_key
+    )
 
     # Normalize Subset labels to canonical forms
     df_plot = _normalize_subset_labels(df_plot, n1, n2)
-
 
     # pivot & ensure Average row
     subset_order = [n1, f"{n1} +\n{n2}", "Average", n2]
     pivot = df_plot.pivot(index="Subset", columns=cell_type_col, values="Proportion").fillna(0)
 
-
     joint_name = f"{n1} +\n{n2}"
 
-
     # If intended rows are missing, try fuzzy contains mapping:
-    def _ensure_row_exists(pivot_df: pd.DataFrame, desired: str) -> Optional[str]:
+    def _ensure_row_exists(pivot_df: pd.DataFrame, desired: str) -> str | None:
         if desired in pivot_df.index:
             return desired
         alt = desired.replace("\n", " ")
@@ -301,11 +290,9 @@ def plot_border_enrichment(
             return matches[0]
         return None
 
-
     r1 = _ensure_row_exists(pivot, n1)
     r2 = _ensure_row_exists(pivot, n2)
     rjoint = _ensure_row_exists(pivot, joint_name) or _ensure_row_exists(pivot, f"{n1} + {n2}")
-
 
     missing = [name for name, found in ((n1, r1), (n2, r2), (joint_name, rjoint)) if found is None]
     if missing:
@@ -314,7 +301,6 @@ def plot_border_enrichment(
             f"{missing}. Available pivot index rows: {list(pivot.index)[:50]} "
         )
 
-
     # compute Average row safely
     map_name_to_index = {n1: r1, n2: r2, joint_name: rjoint}
     try:
@@ -322,16 +308,17 @@ def plot_border_enrichment(
     except Exception:
         pivot.loc["Average"] = 0.0
 
-
     # reindex pivot into canonical ordering (only where present)
     pivot = pivot.reindex([s for s in [n1, joint_name, "Average", n2] if s in pivot.index])
-
 
     # find probability columns for masks
     col_n1 = find_prob_col(df_probabilities, n1)
     col_n2 = find_prob_col(df_probabilities, n2)
-    label_cols = [c for c in df_probabilities.columns if c.lower() in ("subset", "neighborhood", "label", "assigned", "cn", "neighborhood_label")]
-
+    label_cols = [
+        c
+        for c in df_probabilities.columns
+        if c.lower() in ("subset", "neighborhood", "label", "assigned", "cn", "neighborhood_label")
+    ]
 
     if col_n1 and col_n2:
         prob_n1 = pd.to_numeric(df_probabilities[col_n1], errors="coerce").fillna(0.0).astype(float)
@@ -349,26 +336,28 @@ def plot_border_enrichment(
         mask_n2_only = df_probabilities[label_col].astype(str) == n2
         mask_border = df_probabilities[label_col].astype(str) == joint_name
 
-
     # counts by cell type
     all_types = sorted(df_probabilities[cell_type_col].astype(str).unique())
-    counts_n1 = df_probabilities.loc[mask_n1_only].groupby(cell_type_col).size().reindex(all_types).fillna(0).astype(int)
-    counts_n2 = df_probabilities.loc[mask_n2_only].groupby(cell_type_col).size().reindex(all_types).fillna(0).astype(int)
-    counts_border = df_probabilities.loc[mask_border].groupby(cell_type_col).size().reindex(all_types).fillna(0).astype(int)
-
+    counts_n1 = (
+        df_probabilities.loc[mask_n1_only].groupby(cell_type_col).size().reindex(all_types).fillna(0).astype(int)
+    )
+    counts_n2 = (
+        df_probabilities.loc[mask_n2_only].groupby(cell_type_col).size().reindex(all_types).fillna(0).astype(int)
+    )
+    counts_border = (
+        df_probabilities.loc[mask_border].groupby(cell_type_col).size().reindex(all_types).fillna(0).astype(int)
+    )
 
     # align pivot columns
     common_cts = [ct for ct in pivot.columns if ct in all_types]
     if len(common_cts) == 0:
         raise ValueError("No matching cell types between pivot and df_probabilities.")
 
-
     def _safe_row(arr_pivot, label):
         try:
             return arr_pivot.loc[label, common_cts].astype(float).values
         except Exception:
             return np.zeros(len(common_cts), dtype=float)
-
 
     p1 = _safe_row(pivot, n1)
     p2 = _safe_row(pivot, n2)
@@ -377,29 +366,24 @@ def plot_border_enrichment(
     except Exception:
         pb = np.zeros(len(common_cts), dtype=float)
 
-
     c1 = counts_n1.reindex(common_cts).values.astype(int)
     c2 = counts_n2.reindex(common_cts).values.astype(int)
     cb = counts_border.reindex(common_cts).values.astype(int)
-
 
     mask_ok = (c1 >= min_count) & (c2 >= min_count) & (cb >= min_count)
     kept_cts = [ct for ct, ok in zip(common_cts, mask_ok) if ok]
     if len(kept_cts) == 0:
         raise ValueError("No cell types pass the min_count filter. Lower min_count or inspect counts.")
 
-
     p1_f = np.array([pivot.loc[n1, ct] for ct in kept_cts], float)
     p2_f = np.array([pivot.loc[n2, ct] for ct in kept_cts], float)
     pb_f = np.array([pivot.loc[joint_name, ct] for ct in kept_cts], float)
     cb_f = counts_border.reindex(kept_cts).values.astype(int)
 
-
     # log ratios
     logfn = np.log2 if LOG_BASE == 2 else np.log
     x_vals = logfn((pb_f + EPS) / (p1_f + EPS))
     y_vals = logfn((pb_f + EPS) / (p2_f + EPS))
-
 
     # color dict
     if color_dict is None:
@@ -411,18 +395,15 @@ def plot_border_enrichment(
                 palette = make_celltype_palette_from_adata(kept_cts)
                 color_dict_local = {ct: palette.get(ct, "#cccccc") for ct in kept_cts}
         except Exception:
-            color_dict_local = {ct: "#cccccc" for ct in kept_cts}
+            color_dict_local = dict.fromkeys(kept_cts, "#cccccc")
     else:
         color_dict_local = {ct: color_dict.get(ct, "#cccccc") for ct in kept_cts}
 
-
     colors = [color_dict_local.get(ct, "#cccccc") for ct in kept_cts]
-
 
     max_count = int(max(int(cb_f.max()) if len(cb_f) > 0 else 0, int(legend_counts.max())))
     areas = np.array([_count_to_area_linear(int(c), max_count) for c in cb_f], float)
     legend_areas = np.array([_count_to_area_linear(int(c), max_count) for c in legend_counts], float)
-
 
     # FIGURE 1
     fig_scatter, ax = plt.subplots(figsize=(8, 8), dpi=dpi)
@@ -430,8 +411,15 @@ def plot_border_enrichment(
     if not np.any(finite_mask):
         raise ValueError("No finite points to plot after filtering NaNs/infs.")
     plotted_colors = [colors[i] for i, ok in enumerate(finite_mask) if ok]
-    ax.scatter(x_vals[finite_mask], y_vals[finite_mask], s=areas[finite_mask], c=plotted_colors, edgecolor="k", alpha=0.95, linewidth=0.35)
-
+    ax.scatter(
+        x_vals[finite_mask],
+        y_vals[finite_mask],
+        s=areas[finite_mask],
+        c=plotted_colors,
+        edgecolor="k",
+        alpha=0.95,
+        linewidth=0.35,
+    )
 
     ax.axhline(0, color="gray", linestyle="--")
     ax.axvline(0, color="gray", linestyle="--")
@@ -444,7 +432,6 @@ def plot_border_enrichment(
     ax.tick_params(axis="both", labelsize=12)
     plt.tight_layout()
 
-
     # ----- labeling (if requested) -----
     if label_dots:
         # compute offset in data coordinates using axis range
@@ -453,12 +440,10 @@ def plot_border_enrichment(
         x_offset = label_offset_frac * (x1 - x0)
         y_offset = label_offset_frac * (y1 - y0)
 
-
         # keep only those to label (default -> all kept plotted cts)
         finite_kept_cts = [ct for ct, ok in zip(kept_cts, finite_mask) if ok]
         finite_x = x_vals[finite_mask]
         finite_y = y_vals[finite_mask]
-
 
         # determine which labels to show
         if label_cts is None:
@@ -467,7 +452,6 @@ def plot_border_enrichment(
             # normalize provided list to strings and intersect with kept
             requested = set([str(x) for x in label_cts])
             to_label = set(finite_kept_cts).intersection(requested)
-
 
         # label points
         for ct, x, y in zip(finite_kept_cts, finite_x, finite_y):
@@ -492,7 +476,6 @@ def plot_border_enrichment(
                 bbox=label_bbox,
             )
 
-
     # FIGURE 2: size legend
     fig_leg_counts, ax_leg = plt.subplots(figsize=(4, 6), dpi=dpi)
     handles = [plt.scatter([], [], s=float(ar), color="gray", edgecolors="none") for ar in legend_areas]
@@ -501,19 +484,18 @@ def plot_border_enrichment(
     ax_leg.axis("off")
     plt.tight_layout()
 
-
     # FIGURE 3: color legend
     fig_leg_colors, ax_leg_colors = plt.subplots(figsize=(4, 8), dpi=dpi)
-    color_patches = [Patch(facecolor=color_dict_local.get(ct, "#cccccc"), edgecolor="none", label=ct) for ct in kept_cts]
+    color_patches = [
+        Patch(facecolor=color_dict_local.get(ct, "#cccccc"), edgecolor="none", label=ct) for ct in kept_cts
+    ]
     leg_colors = ax_leg_colors.legend(handles=color_patches, title="Cell Type", loc="center", frameon=False, ncol=1)
     if leg_colors is not None:
         leg_colors.set_frame_on(False)
     ax_leg_colors.axis("off")
     plt.tight_layout()
 
-
     if show:
         plt.show()
-
 
     return fig_scatter, fig_leg_counts, fig_leg_colors

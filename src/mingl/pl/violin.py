@@ -1,7 +1,8 @@
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
+
 
 def _robust_qcut_to_bins(
     series: pd.Series,
@@ -67,7 +68,7 @@ def plot_pooled_violin(
     neighborhoods_to_plot=("Inner Follicle", "Outer Follicle"),
     aggregation_mode="pooled",
     min_cells=10,
-    showfliers=False,     # kept for parity; not used for violinplot
+    showfliers=False,  # kept for parity; not used for violinplot
     plot_means=True,
     xtick_fontsize=15,
     y_label="",
@@ -98,23 +99,26 @@ def plot_pooled_violin(
 
     # ---- bin mapping to canonical bins (from score if numeric) ----
     canonical_bins = list(canonical_bins)
-    weights = {b: 2 ** i for i, b in enumerate(canonical_bins)}
+    weights = {b: 2**i for i, b in enumerate(canonical_bins)}
 
     # ensure numeric series for binning
     score_numeric = pd.to_numeric(df[score_key], errors="coerce")
 
-    mapped, edges_used, method_used, labels_used = _robust_qcut_to_bins(
-        score_numeric, canonical_bins=canonical_bins
-    )
+    mapped, edges_used, method_used, labels_used = _robust_qcut_to_bins(score_numeric, canonical_bins=canonical_bins)
     df["_bin_mapped"] = mapped
 
     # normalize labels just in case
     _map = {
-        "very low": "Very Low", "very_low": "Very Low", "very-low": "Very Low",
+        "very low": "Very Low",
+        "very_low": "Very Low",
+        "very-low": "Very Low",
         "low": "Low",
-        "medium": "Medium", "med": "Medium",
+        "medium": "Medium",
+        "med": "Medium",
         "high": "High",
-        "very high": "Very High", "very_high": "Very High", "very-high": "Very High",
+        "very high": "Very High",
+        "very_high": "Very High",
+        "very-high": "Very High",
     }
 
     def _normalize_label(x):
@@ -222,8 +226,9 @@ def plot_pooled_violin(
 
     for idx, (xi, arr) in enumerate(zip(x_positions, combined_arrays)):
         if isinstance(arr, np.ndarray) and arr.size > 0:
-            vp = ax.violinplot([arr], positions=[xi], widths=violin_width,
-                               showmeans=False, showmedians=False, showextrema=False)
+            vp = ax.violinplot(
+                [arr], positions=[xi], widths=violin_width, showmeans=False, showmedians=False, showextrema=False
+            )
             body = vp["bodies"][0]
             body.set_facecolor(colors[idx])
             body.set_edgecolor(edge_color)
@@ -247,8 +252,7 @@ def plot_pooled_violin(
                 ax.plot(xi, float(np.nanmean(arr)), marker="o", color="k", markersize=4, zorder=5)
 
     ax.set_xticks(x_positions)
-    ax.set_xticklabels([str(c) for c in cluster_order_to_plot],
-                       fontsize=xtick_fontsize, rotation=0, ha="center")
+    ax.set_xticklabels([str(c) for c in cluster_order_to_plot], fontsize=xtick_fontsize, rotation=0, ha="center")
 
     ax.set_xlabel("")
     ax.set_ylabel(y_label, fontsize=12)

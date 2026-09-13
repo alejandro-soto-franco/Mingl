@@ -1,7 +1,7 @@
+import matplotlib.pyplot as plt
+import networkx as nx
 import numpy as np
 import pandas as pd
-import networkx as nx
-import matplotlib.pyplot as plt
 from anndata import AnnData
 
 
@@ -44,22 +44,14 @@ def build_neighborhood_pair_graph(
     pairs_df = pd.DataFrame(pair_list, columns=["Neighborhood1", "Neighborhood2"])
     pairs_df[region_key] = region_list
 
-    pair_counts = (
-        pairs_df.groupby([region_key, "Neighborhood1", "Neighborhood2"])
-        .size()
-        .reset_index(name="count")
-    )
+    pair_counts = pairs_df.groupby([region_key, "Neighborhood1", "Neighborhood2"]).size().reset_index(name="count")
 
-    pair_counts_summed = (
-        pair_counts.groupby(["Neighborhood1", "Neighborhood2"], as_index=False)["count"].sum()
-    )
+    pair_counts_summed = pair_counts.groupby(["Neighborhood1", "Neighborhood2"], as_index=False)["count"].sum()
 
     pair_counts_summed = pair_counts_summed.sort_values("count", ascending=False)
     top_pairs = pair_counts_summed.head(top_n).reset_index(drop=True)
 
-    top_pairs["Neighborhood Pair"] = (
-        top_pairs["Neighborhood1"] + display_sep + top_pairs["Neighborhood2"]
-    )
+    top_pairs["Neighborhood Pair"] = top_pairs["Neighborhood1"] + display_sep + top_pairs["Neighborhood2"]
 
     G = nx.Graph()
     for _, row in top_pairs.iterrows():
@@ -91,7 +83,6 @@ def plot_neighborhood_pair_graph(
     edge_color: str = "gray",
     min_edge_width: float = 1.0,
     max_edge_width: float = 10.0,
-
     # 🔥 NEW: legend controls
     edge_legend_values: list[float] | None = None,
     edge_legend_title: str = "Number of Cells",
@@ -125,8 +116,7 @@ def plot_neighborhood_pair_graph(
         w_max = w_min + max(1.0, abs(w_min) * 0.1)
 
     normalized_weights = [
-        min_edge_width + (w - w_min) / (w_max - w_min) * (max_edge_width - min_edge_width)
-        for w in weights
+        min_edge_width + (w - w_min) / (w_max - w_min) * (max_edge_width - min_edge_width) for w in weights
     ]
 
     # --- Node colors ---

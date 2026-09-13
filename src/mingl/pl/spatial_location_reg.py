@@ -1,6 +1,5 @@
-import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
 from anndata import AnnData
 
 
@@ -32,13 +31,13 @@ def spatial_loc_region(
     probabilities_df = pd.DataFrame(
         adata.obsm["neighborhood_probabilities"],
         index=adata.obs_names,  # restores cell index
-        columns=adata.uns["neighborhood_probability_neighborhoods"]
+        columns=adata.uns["neighborhood_probability_neighborhoods"],
     )
     if colors is None:
         colors = {"other": "lightgray", "only_1": "plum", "only_2": "blue", "both": "red"}
 
     region_mask = adata.obs[region_key].astype(str).eq(region)
-    #region_mask = (adata.obs[region_key].astype(str).values == str(region)).to_numpy()
+    # region_mask = (adata.obs[region_key].astype(str).values == str(region)).to_numpy()
 
     x = adata.obs.loc[region_mask, x_col].to_numpy()
     y = adata.obs.loc[region_mask, y_col].to_numpy()
@@ -84,4 +83,3 @@ def spatial_loc_region(
     if show:
         plt.show()
     return fig, ax, masks
-

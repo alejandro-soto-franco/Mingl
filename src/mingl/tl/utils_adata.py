@@ -1,5 +1,5 @@
 # utils_adata.py
-from typing import Tuple, Optional, List
+
 import numpy as np
 import pandas as pd
 from anndata import AnnData
@@ -19,7 +19,7 @@ def _is_prob_like_series(s: pd.Series) -> bool:
     return (distinct >= 3) and (pct_in_0_1 >= 0.8)
 
 
-def _fuzzy_col_matches(cols: List[str], name: str) -> Optional[str]:
+def _fuzzy_col_matches(cols: list[str], name: str) -> str | None:
     """
     Return a single fuzzy-matched column name from cols that best matches `name`,
     using lower/underscore normalization and substring testing (not strict).
@@ -41,9 +41,9 @@ def _fuzzy_col_matches(cols: List[str], name: str) -> Optional[str]:
 
 def build_df_probs_from_adata(
     adata: AnnData,
-    prob_key: Optional[str] = "neighborhood_probabilities",
+    prob_key: str | None = "neighborhood_probabilities",
     cell_type_col: str = "Cell Type",
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Build (df_probs, numeric_probs_df) from an AnnData:
       - prefer adata.obsm[prob_key] if present (DataFrame or array)
@@ -51,12 +51,13 @@ def build_df_probs_from_adata(
       - else search adata.obs for columns that look like probability columns (name contains 'prob' or numeric values in [0,1])
       - also try adata.uns["neighborhood_probability_neighborhoods"] for column names when an array is found
 
-    Returns:
+    Returns
+    -------
       - df_probs: probabilities DataFrame (index = adata.obs_names) with the detected probability columns and an attached cell_type_col (if found)
       - numeric_df: same as df_probs but only numeric probability columns (floats)
     """
     # 1) try explicit obsm key
-    df_probs: Optional[pd.DataFrame] = None
+    df_probs: pd.DataFrame | None = None
 
     if prob_key and prob_key in adata.obsm:
         obj = adata.obsm[prob_key]
@@ -77,7 +78,9 @@ def build_df_probs_from_adata(
         for k, v in adata.obsm.items():
             if isinstance(v, pd.DataFrame):
                 # prefer frames that contain 'prob' in any column
-                if any(("prob" in str(c).lower() or "probability" in str(c).lower() or "%" in str(c)) for c in v.columns):
+                if any(
+                    ("prob" in str(c).lower() or "probability" in str(c).lower() or "%" in str(c)) for c in v.columns
+                ):
                     df_probs = v.reindex(adata.obs_names).copy()
                     break
                 # or if columns look numeric and in [0,1]
@@ -135,7 +138,11 @@ def build_df_probs_from_adata(
         df_probs[cell_type_col] = adata.obs[cell_type_col].reindex(df_probs.index).astype(str)
     else:
         # fuzzy fallbacks
-        alts = [c for c in adata.obs.columns if c.lower().replace(" ", "") in ("celltype","celllabel","cell_types","cell_label")]
+        alts = [
+            c
+            for c in adata.obs.columns
+            if c.lower().replace(" ", "") in ("celltype", "celllabel", "cell_types", "cell_label")
+        ]
         if alts:
             df_probs[cell_type_col] = adata.obs[alts[0]].reindex(df_probs.index).astype(str)
 

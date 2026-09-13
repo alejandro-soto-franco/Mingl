@@ -1,9 +1,8 @@
 from __future__ import annotations
-from typing import Optional, Union
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from anndata import AnnData
 
 from ._utils import save_figure  # same helper used elsewhere
@@ -16,9 +15,9 @@ def spatial_neighborhood_plot(
     prob_key: str = "neighborhood_probabilities",
     x_key: str = "x",
     y_key: str = "y",
-    neighborhood_key: str = "neighborhood",      # matches centroid_Calculation
-    region_key: str = "unique_region",           # matches KNN / centroid_Calculation
-    figsize: Union[float, tuple[float, float]] = 30,
+    neighborhood_key: str = "neighborhood",  # matches centroid_Calculation
+    region_key: str = "unique_region",  # matches KNN / centroid_Calculation
+    figsize: float | tuple[float, float] = 30,
     dpi: int = 300,
     s: float = 1.0,
     palette: str = "tab20",
@@ -28,9 +27,9 @@ def spatial_neighborhood_plot(
     legend_fontsize: float = 35.0,
     title_fontsize: float = 35.0,
     invert_y: bool = False,
-    show: Optional[bool] = None,
-    save: Union[bool, str, None] = None,
-    ax: Optional[plt.Axes] = None,
+    show: bool | None = None,
+    save: bool | str | None = None,
+    ax: plt.Axes | None = None,
 ):
     """
     Spatial scatter plot of cells colored by assigned neighborhood for a single region.
@@ -106,30 +105,28 @@ def spatial_neighborhood_plot(
     # --- 1. Filter for the region you want to plot (like your filtered_cells) ---
     filtered_cells = obs[obs[region_key] == desired_region].copy()
     if filtered_cells.empty:
-        raise ValueError(
-            f"No cells found for region {desired_region!r} in {region_key!r}."
-        )
+        raise ValueError(f"No cells found for region {desired_region!r} in {region_key!r}.")
 
     filtered_probabilities_df = probabilities_df.loc[filtered_cells.index]
 
     # --- 2. Assigned neighborhoods + probabilities (same logic as your snippet) ---
     assigned_neighborhoods = filtered_cells[neighborhood_key]
 
-    assigned_probabilities = filtered_probabilities_df.reindex(
-        filtered_cells.index
-    ).apply(
+    assigned_probabilities = filtered_probabilities_df.reindex(filtered_cells.index).apply(
         lambda row: row[filtered_cells.loc[row.name, neighborhood_key]],
         axis=1,
     )
 
     # --- 3. visualization_df, mirroring your original DataFrame ---
-    visualization_df = pd.DataFrame({
-        "x": filtered_cells[x_key],
-        "y": filtered_cells[y_key],
-        "Assigned Neighborhood": assigned_neighborhoods,
-        "Assigned Probability": assigned_probabilities,
-        "unique_region": filtered_cells[region_key],
-    })
+    visualization_df = pd.DataFrame(
+        {
+            "x": filtered_cells[x_key],
+            "y": filtered_cells[y_key],
+            "Assigned Neighborhood": assigned_neighborhoods,
+            "Assigned Probability": assigned_probabilities,
+            "unique_region": filtered_cells[region_key],
+        }
+    )
 
     # --- 4. Plotting via plt.scatter (no catplot2) ---
     # handle figsize as scalar or tuple

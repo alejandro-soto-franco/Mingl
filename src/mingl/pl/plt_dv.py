@@ -1,25 +1,28 @@
-import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
-def plot_log2fc_vs_mean_abundance(df,
-                                  neighborhood,
-                                  bucket_map,
-                                  cell_type_color_map,
-                                  min_count=10,
-                                  subset_region=None,
-                                  subset_patient=None,
-                                  patient_split_sep="_",
-                                  figsize=(10, 6),
-                                  eps_pct=0.01,
-                                  size_scale=300,
-                                  color_by_bucket=False,
-                                  fc_threshold=1.0,
-                                  abundance_threshold_pct=1.0,
-                                  fontsize=12,
-                                  annotate_sectors=True,
-                                  min_marker_size=40,
-                                  return_fig=False):
+
+def plot_log2fc_vs_mean_abundance(
+    df,
+    neighborhood,
+    bucket_map,
+    cell_type_color_map,
+    min_count=10,
+    subset_region=None,
+    subset_patient=None,
+    patient_split_sep="_",
+    figsize=(10, 6),
+    eps_pct=0.01,
+    size_scale=300,
+    color_by_bucket=False,
+    fc_threshold=1.0,
+    abundance_threshold_pct=1.0,
+    fontsize=12,
+    annotate_sectors=True,
+    min_marker_size=40,
+    return_fig=False,
+):
     """
     Plot all cell types on one panel:
       x = log2(subset % / global %)
@@ -29,7 +32,6 @@ def plot_log2fc_vs_mean_abundance(df,
     sectors defined by fc_threshold (vertical) and abundance_threshold_pct (horizontal).
     Returns the DataFrame with computed metrics (plot_df).
     """
-
     # --- checks
     required_cols = ["region", "neigh_name", "Cell Type"]
     missing = [c for c in required_cols if c not in df.columns]
@@ -61,9 +63,7 @@ def plot_log2fc_vs_mean_abundance(df,
     # filter by min_count (global OR subset)
     global_pass = set(counts_global[counts_global > min_count].index)
     subset_pass = set(counts_subset[counts_subset > min_count].index)
-    ct_union = sorted(global_pass.union(subset_pass),
-                      key=lambda x: counts_global.get(x, 0),
-                      reverse=True)
+    ct_union = sorted(global_pass.union(subset_pass), key=lambda x: counts_global.get(x, 0), reverse=True)
 
     if len(ct_union) == 0:
         raise ValueError(f"No cell types > {min_count} to plot.")
@@ -77,15 +77,17 @@ def plot_log2fc_vs_mean_abundance(df,
         pct_s = s / denom_subset * 100.0
         mean_pct = (pct_g + pct_s) / 2.0
         log2fc = np.log2((pct_s + eps_pct) / (pct_g + eps_pct))
-        rows.append({
-            "ct": ct,
-            "log2fc": log2fc,
-            "mean_pct": mean_pct,
-            "subset_pct": pct_s,
-            "global_pct": pct_g,
-            "subset_count": s,
-            "global_count": g
-        })
+        rows.append(
+            {
+                "ct": ct,
+                "log2fc": log2fc,
+                "mean_pct": mean_pct,
+                "subset_pct": pct_s,
+                "global_pct": pct_g,
+                "subset_count": s,
+                "global_count": g,
+            }
+        )
 
     plot_df = pd.DataFrame(rows).set_index("ct")
 
@@ -118,8 +120,8 @@ def plot_log2fc_vs_mean_abundance(df,
         alpha=0.85,
         edgecolor="k",
         linewidth=0.3,
-        marker='o',
-        zorder=2
+        marker="o",
+        zorder=2,
     )
 
     # make tick labels same size as fontsize
@@ -155,13 +157,11 @@ def plot_log2fc_vs_mean_abundance(df,
                 ha="center",
                 va="bottom",
                 color="black",
-                zorder=4
+                zorder=4,
             )
-
 
     plt.tight_layout()
     plt.show()
     if return_fig:
         return fig, plot_df
     return plot_df
-
