@@ -2,13 +2,6 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 
-from sklearn.neighbors import NearestNeighbors
-from typing import Dict, Optional, Sequence
-
-import anndata as ad
-import numpy as np
-import pandas as pd
-
 from .knn2 import KNN2
 
 
@@ -19,7 +12,7 @@ def centroid_Calculation(
     cluster_col: str = "cell_type",
     neighborhood_col: str = "neighborhood",
     region_col: str = "unique_region",
-    store_key: Optional[str] = None,
+    store_key: str | None = None,
 ) -> ad.AnnData:
     """
     Compute per-neighborhood mean and std of cell-type counts in k-NN windows.
@@ -70,10 +63,12 @@ def centroid_Calculation(
     # use obs directly; keep original indices (no reset_index)
     filtered_cells = adata.obs.copy()
 
-    # cell types → columns we created in KNN
-    cell_type_columns = adata.obs[cluster_col].unique()
-    print(cell_type_columns)
-    print(type(cell_type_columns))
+    # cell types -> columns we created in KNN. KNN2's window columns are
+    # always strings (it strips a "{cluster_col}__" prefix off pandas
+    # get_dummies() column names), so cast here too: indexing windows_k with
+    # the raw (e.g. integer) unique values would otherwise raise a KeyError
+    # whenever cluster_col holds a non-string dtype.
+    cell_type_columns = pd.Index(adata.obs[cluster_col].unique()).astype(str)
     windows_k[cell_type_columns] = windows_k[cell_type_columns].astype("float32")
 
     neighborhoods_to_loop = adata.obs[neighborhood_col].unique()
@@ -81,9 +76,7 @@ def centroid_Calculation(
 
     for neighborhood in neighborhoods_to_loop:
         # cells in this neighborhood (indices are original obs index)
-        filtered_neighborhood_df = filtered_cells[
-            filtered_cells[neighborhood_col] == neighborhood
-        ]
+        filtered_neighborhood_df = filtered_cells[filtered_cells[neighborhood_col] == neighborhood]
         cell_numbers_in_neighborhood = filtered_neighborhood_df.index.values
 
         # take matching rows from windows_k
