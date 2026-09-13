@@ -1,7 +1,9 @@
+from collections.abc import Sequence
+
 import anndata as ad
-import pandas as pd
-import numpy as np
 import cupy as cp
+import pandas as pd
+
 from .knn2 import KNN2
 
 
@@ -12,15 +14,37 @@ def gpu_gmm_probability(
     cluster_col: str = "cell_type",
     neighborhood_col: str = "neighborhood",
     region_key: str = "unique_region",
+    ks: Sequence[int] = (10, 20, 100, 300),
     k: int = 10,
     batch_size: int = 20000,
     prob_key: str = "neighborhood_probability",
     prob_variable_key: str = "neighborhood_probability_neighborhoods",
+    copy: bool = False,
 ):
+    """Calculate per-cell neighbourhood membership probabilities on GPU.
+
+    Mirrors :func:`mingl.tl.gmm.cpu_gmm_probability`: same ``ks`` default and
+    the same required-column validation, so the two paths score identical
+    ``k``-windows and only differ in where the Gaussian evaluation runs.
+
+    Parameters
+    ----------
+    copy
+        When ``True``, operate on and return a copy of ``cells`` instead of
+        mutating it in place.
+    """
+    if copy:
+        cells = cells.copy()
+
+    if neighborhood_col not in cells.obs or cluster_col not in cells.obs:
+        raise KeyError(f"One or more required columns ({neighborhood_col}, {cluster_col}) are missing in obs.")
+
     # -----------------------------
     # 1. Compute windows (same as CPU)
     # -----------------------------
-    windows = KNN2(cells, cluster_col=cluster_col, region_key=region_key)
+    windows = KNN2(cells, cluster_col=cluster_col, region_key=region_key, ks=ks)
+    if k not in windows:
+        raise ValueError(f"k={k} not in available ks from KNN2: {list(windows.keys())}")
     win = windows[k].copy()
 
     # Attach cluster labels (same as CPU)
@@ -32,7 +56,7 @@ def gpu_gmm_probability(
     cell_types = cells.obs[cluster_col].unique().tolist()
 
     mean_cols = [f"{ct}_mean" for ct in cell_types]
-    std_cols  = [f"{ct}_std"  for ct in cell_types]
+    std_cols = [f"{ct}_std" for ct in cell_types]
 
     # Safety check (important)
     missing = [c for c in mean_cols + std_cols if c not in centroids.var_names]
@@ -51,7 +75,7 @@ def gpu_gmm_probability(
     # 3. Load centroids (aligned to CPU order)
     # -----------------------------
     means = cp.array(centroids[:, mean_cols].X)
-    stds  = cp.array(centroids[:, std_cols].X)
+    stds = cp.array(centroids[:, std_cols].X)
 
     # -----------------------------
     # 4. Neighborhood names (match CPU iterrows)
@@ -67,7 +91,7 @@ def gpu_gmm_probability(
 
         exp_cell = data[:, cp.newaxis, :]
         exp_mean = means[cp.newaxis, :, :]
-        exp_std  = stds[cp.newaxis, :, :]
+        exp_std = stds[cp.newaxis, :, :]
 
         safe_std = cp.where(exp_std == 0, 1e-10, exp_std)
 
@@ -77,7 +101,7 @@ def gpu_gmm_probability(
 
         # Handle std == 0 exactly like CPU logic
         zero_mask = exp_std == 0
-        eq_mask   = exp_cell == exp_mean
+        eq_mask = exp_cell == exp_mean
 
         pdf = cp.where(zero_mask & eq_mask, 1, pdf)
         pdf = cp.where(zero_mask & (~eq_mask), 0, pdf)
@@ -102,14 +126,12 @@ def gpu_gmm_probability(
         start = i * batch_size
         end = min((i + 1) * batch_size, n)
 
-        print(f"GPU Processing batch {i+1}/{batches}...")
+        print(f"GPU Processing batch {i + 1}/{batches}...")
 
         batch_df = win_features.iloc[start:end]
         probs = compute_batch(batch_df)
 
-        outputs.append(
-            pd.DataFrame(probs, index=batch_df.index, columns=nb_names)
-        )
+        outputs.append(pd.DataFrame(probs, index=batch_df.index, columns=nb_names))
 
     final = pd.concat(outputs)
 
