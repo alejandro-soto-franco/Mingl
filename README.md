@@ -1,250 +1,272 @@
-## MINGL: Quantifies Borders, Gradients, and Heterogeneity in Multicellular Tissue Organization
+## MINGL
 
 **Kyra Van Batavia¹, James Wright²˒³, Annette Chen¹, Yuexi Li¹, John W. Hickey¹\***
 
-¹ Department of Biomedical Engineering, Duke University, Durham, NC, USA  
-² Department of Computer Science, Duke University, Durham, NC, USA  
-³ Department of Mathematics, Duke University, Durham, NC, USA  
+¹ Department of Biomedical Engineering, Duke University, Durham, NC, USA
+² Department of Computer Science, Duke University, Durham, NC, USA
+³ Department of Mathematics, Duke University, Durham, NC, USA
 
-\* **Corresponding author:** john.hickey@duke.edu  
-**Contributing authors:** kyra.vanbatavia@duke.edu; james.wright@duke.edu; annette.chen@duke.edu; yuexi.li@duke.edu  
+\* **Corresponding author:** john.hickey@duke.edu
+**Contributing authors:** kyra.vanbatavia@duke.edu; james.wright@duke.edu; annette.chen@duke.edu; yuexi.li@duke.edu
 
 **Preprint:** https://www.biorxiv.org/content/10.64898/2026.03.24.713296v1
+**Upstream repository:** https://github.com/HickeyLab/Mingl
 
----
+This fork keeps the Hickey Lab's `mingl` package and adds a Snakemake
+workflow that reproduces the manuscript's figures from configuration,
+replacing the original notebooks. Credit for the method and the underlying
+biology belongs to
+the authors above; this fork's own additions are the workflow, config,
+tests and the bug fixes listed under "Differences from upstream".
 
 ![MINGL Logo](MINGL_GitHub_Logo.png)
 
 ## Abstract
 
-Tissues are organized with interacting multicellular organizational units whose interfaces and transitions shape function in health and disease. Current spatial-omics analyses typically assign cells to a single cellular neighborhood—ignoring natural gradients, heterogeneity, and borders.  
-
-Here we present **MINGL** (*Mixture-based Identification of Neighborhood Gradients with Likelihood estimates*), a probabilistic framework that converts existing neighborhood annotations into continuous measures of tissue architecture.  
-
-MINGL models each cell by multi-membership probabilities across hierarchical organizational units and uses these probabilities to identify enriched cells at interfaces between units, constructs interaction networks across hierarchical scales, quantifies compositional gradient transitions, measures context-specific composition heterogeneity, and provides a starting point for neighborhood resolution. Across multiple spatial-omic datasets spanning melanoma, healthy intestine, and Barrett’s Esophagus progression, MINGL detected innate immune-enriched interfaces at tumor and anatomical interfaces, plasma cell niches linking cellular neighborhoods, distinct regimes of sharp and gradual transitions between organizational states, and disease-associated neighborhood remodeling. By treating neighborhood assignment uncertainty as a biological signal rather than noise, MINGL unifies discrete and continuous representations of tissue organization and makes tissue architecture measurable, comparable, and scalable across biological scales and spatial-omics platforms.
-
----
-
-## MINGL Applications
+MINGL is Mixture-based Identification of Neighbourhood Gradients with
+Likelihood estimates: a probabilistic framework that converts existing
+neighbourhood annotations into continuous per-cell membership scores across
+hierarchical tissue units, rather than a single hard assignment. Those
+scores locate border cells at unit interfaces, drive interaction networks
+across hierarchical scales, quantify gradient transitions between units,
+and measure context-specific composition heterogeneity, evaluated across
+melanoma, healthy intestine and Barrett's oesophagus progression datasets.
+The full abstract is in the preprint linked above.
 
 ![Mingl Applications](MINGL_Applications.png)
 
----
+## Reproducing the manuscript figures
 
-## Getting Started
+```bash
+pixi install       # solves and creates the environment (linux-64)
+pixi run test       # pytest: unit tests plus a Snakemake DAG dry-run check
+pixi run lint        # ruff check + ruff format --check + pyrefly check
+pixi run smoke       # the full DAG on a small in-repo fixture, under a minute
+pixi run all         # the full DAG on real data (see "Data availability" below)
+```
 
-MINGL is a set of tools and plotting functions for identifying and quantifying borders between hierarchical units and gradients of changing cellular organization across these interfaces. MINGL is also a tool for investigating heterogeneity in hierarchical tissue organization across disease states, between patients, or across tissue samples from the same patient, and can identify changes in cellular organization even when anchor cell types remain unchanged.
-MINGL also includes a tool for suggesting a biologically-informed cluster number range as a starting point for hierarchical spatial organization analysis.
+`pixi run all` reproduces the simulated-transitions sweep end to end
+(`results/simulated_transitions/{fast,medium,slow}/`); it does not attempt
+the intestine, melanoma or esophagus figures, because their source data does
+not ship with this repository. Ask for one of those explicitly once its raw
+file is in place under `data/<name>/raw.csv` (or let the `download_*` rule
+fetch it, once `config.yaml`'s `sha256` field for that dataset is filled in
+from a successful download; see below):
 
-MINGL's main tool can be run on MacOS or WindowsOS using CPU, and is also equipped with a GPU accelerated version compatible with cupy and WindowsOS as of version 0.0.1. General CPU GMM tool calculations on an average system can take several hours, and scales with number of cells and spatial organization categories. All other tools take less than several minutes to run.
+```bash
+pixi run snakemake --cores 6 results/intestine/neighborhood/adata.h5ad
+```
 
-Please see instructions on installation and our recommended use below. Happy exploration of "life on the edge" in borders between spatial organization of our tissues!
+### Workflow DAG
+
+```mermaid
+flowchart TD
+    subgraph "Simulated transitions (in `all`, no download)"
+        fixtures["tests/fixtures/simulated_transitions/\n(synthetic_tissue_*.csv, sim*_results.h5ad)"] --> analyse[simulated_transitions_analyse]
+        analyse --> plot[simulated_transitions_plot]
+        analyse --> parity["results/.../parity.json"]
+        plot --> figs["results/.../figure.{pdf,png}"]
+    end
+
+    subgraph "Manuscript figures (on request, not in `all`)"
+        dl_int[download_intestine] --> int_n[intestine_neighborhood]
+        dl_int --> int_tu[intestine_tissue_unit]
+        dl_int --> int_comm[intestine_community]
+        dl_mel[download_melanoma] --> mel_n[melanoma_neighborhood]
+        eso_raw["data/esophagus/raw.csv\n(place manually, no public source found)"] --> eso_n[esophagus_neighborhood]
+    end
+```
+
+### Configuration
+
+`config/config.yaml` lists every parameter, seed and data source the
+notebooks hardcoded: cluster/neighbourhood/region column names, k-window
+sizes, thresholds, and each dataset's documented source with a SHA-256 field
+that a `download_*` rule fills and checks. `config/smoke.yaml` layers on top
+(`snakemake --configfile config/config.yaml config/smoke.yaml`) and
+restricts the simulated-transitions target to one variant.
+
+## Data availability
+
+None of the manuscript's three real datasets ship with this repository.
+
+| Dataset | Best-attested public source | Status |
+|---|---|---|
+| Intestine (Hickey et al. 2023, *Nature*; HuBMAP CODEX) | Dryad [10.5061/dryad.pk0p2ngrf](https://doi.org/10.5061/dryad.pk0p2ngrf), `23_09_CODEX_HuBMAP_alldata_Dryad_merged.csv` (2.9 GB) | Identity confirmed (dataset title matches); download blocked from this machine, see below |
+| Melanoma | Dryad [10.5061/dryad.k0p2ngfcc](https://doi.org/10.5061/dryad.k0p2ngfcc), `23_10_11_Melanoma_Marker_Cell_Neighborhood.csv` (5.0 GB) | Identity confirmed (filename matches the notebook's exactly); download blocked, see below |
+| Esophagus (Barrett's progression) | Not identified | No URL, DOI or portal reference exists anywhere in the deleted notebooks; only the local filename `all_regions_from_h5mu.csv`. Place a file at `data/esophagus/raw.csv` to run `esophagus_neighborhood`. |
+
+**Download status for the two Dryad datasets:** their file identity was
+confirmed via Dryad's own API (`GET /api/v2/datasets/doi:...` returns each
+dataset's title and file listing, matching the manuscript exactly), and
+those file listings are public. Dryad's actual file download endpoints
+(`/api/v2/files/<id>/download` and the legacy `/downloads/file_stream/<id>`)
+returned `401`/`403` to unauthenticated programmatic requests from this
+machine: an AWS WAF challenge on the download endpoint specifically, distinct
+from the dataset pages themselves. `workflow/scripts/fetch_dataset.py`
+implements the download + SHA-256 verification the `download_intestine`/
+`download_melanoma` rules expect; running it from a browser-authenticated
+session, or with Dryad API credentials, should succeed where this session's
+plain HTTPS request did not. Once a file downloads successfully, copy the
+SHA-256 it prints into `config.yaml`'s `sha256` field for that dataset.
+
+Given this, the workflow's only obtainable-here data this session is the
+in-repo `tests/fixtures/simulated_transitions/` fixture: the exact stored
+output of the deleted `SyntheticGradientTest{Fast,Medium,Slow}.ipynb`
+notebooks (seed=42, `k=10`, per `FunctionsSimulator.ipynb`). It is what
+`pixi run smoke` and `pixi run all` actually execute, and what the parity
+table below compares against.
+
+## Parity with the notebooks
+
+`tests/test_parity.py` and the `simulated_transitions_analyse` rule
+re-run `centroid_Calculation` + `cpu_gmm_probability` (k=10) on the shipped
+synthetic fixtures and compare the result against each notebook's own
+stored `neighborhood_probabilities` output:
+
+| Variant | Pearson r | Max abs. diff | Argmax agreement |
+|---|---|---|---|
+| fast | 1.0 | 5.6e-16 | 1.0 |
+| medium | 1.0 | 5.6e-16 | 1.0 |
+| slow | 1.0 | 6.1e-16 | 1.0 |
+
+The differences are floating-point noise (`1e-16`, machine epsilon for
+float64), so this reproduces the notebooks' own output exactly. Full
+per-notebook output extraction (including the manuscript-figure notebooks,
+which have no directly comparable stored numeric output beyond figures) is
+recorded outside this repository; see the "Differences from upstream"
+section for what those notebooks actually computed and could not be
+independently re-run against.
+
+## Differences from upstream
+
+Bug fixes, each in its own commit with a regression test:
+
+1. **GPU/CPU probability parity** (`tl/gmm_gpu.py`). `gpu_gmm_probability`
+   called `KNN2` without `ks`, so it scored a different k-window set than
+   `cpu_gmm_probability` (`ks=(10, 20, 100, 300)` vs KNN2's own default
+   `(5, 10, 20, 100, 300)`), and it skipped the CPU path's required-column
+   validation. Both are now aligned, and `gpu_gmm_probability` gained a
+   `copy` parameter to match. Untested on real hardware: this machine has no
+   GPU; `tests/test_gmm_gpu.py` skips its CuPy-dependent checks and always
+   runs its signature/default checks.
+2. **Deprecated, silently-ignored `threshold`** (`tl/gmm.py`).
+   `cpu_gmm_probability`'s `threshold` parameter was `del`eted unused.
+   Passing a non-default value now raises a `DeprecationWarning`;
+   thresholding happens downstream, in `findPositives`.
+3. **`KNN2` gained an optional `max_distance`** (`tl/knn2.py`). The README
+   used to say `knn2.py` applies a maximum-distance threshold; it had none.
+   The thresholded version lived only in `Neighborhoods.k_windows`
+   (`tl/grad.py`). Both now share one summation helper
+   (`knn2._sum_windows`), so `KNN2(..., max_distance=...)` and
+   `Neighborhoods.k_windows(distance_max=...)` agree by construction, and
+   `max_distance=None` (the default) reproduces the original, unthresholded
+   behaviour exactly.
+4. **Manuscript-specific defaults removed from public signatures.**
+   `gb()`'s `region_value` no longer defaults to `"B006_Descending -
+   Sigmoid"` (it defaults to `None`, matching the underlying
+   `gb_local_score_gradients`); `mingl_neighborhoods_scverse`'s `tu1`/`tu2`
+   (formerly defaulting to `"Inner Follicle"`/`"Outer Follicle"`) are now
+   required, positional arguments, since no generic default is sensible;
+   `crd()`'s hardcoded `'cellid'`/`'region'`/`'neigh_name'` column names are
+   now `cellid_col`/`region_col`/`neigh_name_col` parameters (defaulting to
+   the same strings, so existing callers are unaffected). All manuscript
+   values now live in `config/config.yaml` instead.
+5. **Dead driver script removed** (`tl/n_neighbors.py`): a commented-out
+   block referencing `/Volumes/data/MINGLE/...`, an absolute path from the
+   original author's machine.
+6. **Repository hygiene**: removed tracked `tests/__pycache__/*.pyc` and
+   `tools/__pycache__/*.pyc`; removed `tests/test_basic.py`'s two skipped
+   tests referencing a nonexistent `mingl.pp.elaborate_example`; removed a
+   stray `biome.jsonc` (a JS/TS formatter config with nothing in this Python
+   repository to format) and a dead trailing string literal in
+   `pp/preprocessing.py` (an unreachable, commented-out `.h5mu` branch); the
+   README's broken Actions link is fixed by this repository's own
+   `.github/workflows/ci.yml`.
+7. **In-place `AnnData` mutation**: `cpu_gmm_probability` and
+   `gpu_gmm_probability` gained a `copy: bool = False` parameter (documented
+   in each docstring); the default preserves the original in-place
+   behaviour.
+8. **Non-string `cluster_col` values broke `centroid_Calculation` and
+   `cpu_gmm_probability`** (`tl/centroids.py`, `tl/gmm.py`), found while
+   building the parity harness above: `KNN2`'s window columns are always
+   strings (it strips a `"{cluster_col}__"` prefix off pandas
+   `get_dummies()` column names), but both functions indexed those columns
+   with the raw `adata.obs[cluster_col]` values, raising a `KeyError` or
+   `ValueError` whenever `cluster_col` contained integers (a common encoding for
+   cell-type ids, and exactly what the SimulatedTransitions fixtures use).
+   Both now cast to `str` first, matching KNN2's own convention.
+
+Intentional deviations, not bugs:
+
+- The workflow calls `cpu_gmm_probability` everywhere, including for the
+  manuscript figures the notebooks computed via `gpu_gmm.gpu_gmm_probability`
+  (`intestine_tissue_unit`, `intestine_community`, `intestine_neighborhood`
+  in `workflow/rules/manuscript_figures.smk`): this machine has no GPU. The
+  two paths are mathematically identical after fix (1) above, and
+  `tests/test_parity.py` demonstrates `cpu_gmm_probability` reproduces
+  stored notebook output exactly on the one fixture this repository can
+  compare against.
+- `pixi run lint`'s pyrefly check excludes `tl/gmm_gpu.py` (imports `cupy`
+  unconditionally; nothing here can import it) and `pl/enrichment.py` (two
+  pre-existing `not-iterable` errors trace to a helper this task's confirmed
+  bug list does not cover, and rewriting it without a test protecting its
+  behaviour was out of scope). `pyproject.toml`'s `[tool.ruff]` and
+  `[tool.pyrefly]` sections document, file by file, which further
+  pre-existing style/typing categories in `pl/` and `tl/` are downgraded
+  rather than silently rewritten, and why.
+- `docs/notebooks/example.ipynb` (which called a nonexistent
+  `mingl.pp.elaborate_example`, from the scverse cookiecutter template this
+  package was generated from) is now `docs/notebooks/example.md`, a MyST
+  notebook that runs the real `KNN2` -> `centroid_Calculation` ->
+  `cpu_gmm_probability` pipeline on a small synthetic AnnData built in
+  place, and executes on every docs build (`nb_execution_mode = "cache"`).
+
+## Package structure
+
+| Module | Description |
+|---|---|
+| `mingl.pp` | Preprocessing utilities for preparing spatial datasets |
+| `mingl.tl` | Core analysis tools: probability estimation, border identification, gradients, interaction networks, heterogeneity analysis, neighbourhood-count selection |
+| `mingl.pl` | Publication-quality plotting functions for visualising MINGL analyses |
+| `workflow/` | The Snakemake workflow (`Snakefile`, `rules/*.smk`, `scripts/*.py`) that replaces the deleted tutorial notebooks |
+| `config/` | `config.yaml` (full run) and `smoke.yaml` (small-fixture override) |
+| `tests/` | Unit tests, the simulated-transitions parity check, and a Snakemake dry-run check; `tests/fixtures/` has the small in-repo fixture |
+
+See `docs/api.md` for the full function reference (its prose still
+describes the k=10/100/300 neighbourhood/community/tissue-unit convention
+by the tutorial figures that established it; those figures are now
+`workflow/rules/manuscript_figures.smk`, with every value taken from
+`config.yaml` instead of hardcoded).
 
 ## Installation
 
-MINGL is implemented as an open-source Python package and is distributed through both **PyPI** and **GitHub**.
+MINGL is distributed through PyPI and GitHub as an installable Python
+package (`pip install mingle-hl`, or `pip install .` from a clone); the
+workflow above is the reproducible-research layer built on top of it and
+needs pixi, not pip, to run. See `pyproject.toml` for the package's own
+dependencies.
 
-## Requirements
+## Machine requirements for the workflow
 
-- Python **3.11** or newer
-- Windows or macOS
+CPU only; every rule targets under 6 cores and well under the 30-minute
+runtime `pixi run smoke`/`pixi run all` actually take (well under a minute
+and well under a minute respectively, on this machine). The manuscript
+figure rules, once real data is in place, have not been runtime-profiled
+here.
 
-We strongly recommend installing MINGL into a **new Python virtual environment** to avoid dependency conflicts and ensure a reproducible software setup.
+## Licence
 
-Installation through either method automatically resolves and installs MINGL’s required Python dependencies, as specified in the package metadata; optional GPU-accelerated functionality requires installation of a compatible CuPy package separately.
-
----
-
-## Step 1. Create a new Python environment
-
-### Windows
-
-Using the Python launcher:
-
-```bash
-py -3.11 -m venv mingl-env
-mingl-env\Scripts\activate
-python -m pip install --upgrade pip
-```
-
-### macOS
-
-```bash
-python3.11 -m venv mingl-env
-source mingl-env/bin/activate
-python -m pip install --upgrade pip
-```
-
-Once your environment has been activated and `pip` has been upgraded, proceed with one of the installation methods below.
-
----
-
-## Step 2. Install MINGL
-
-### Option 1: Install the latest stable release from PyPI
-
-```bash
-pip install mingle-hl
-```
-
-### Option 2: Install the latest development version from GitHub
-
-Install directly from the latest development branch:
-
-```bash
-pip install git+https://github.com/HickeyLab/Mingl.git@main
-```
-
-Alternatively, clone the repository locally and install from source:
-
-```bash
-git clone https://github.com/HickeyLab/Mingl.git
-cd Mingl
-pip install .
-```
-
----
-
-## Step 3. Verify your installation
-
-Open Python (or a Jupyter notebook) and verify that MINGL imports successfully.
-
-```python
-import mingl as mg
-
-print(mg.__version__)
-```
-
-If no errors are produced, MINGL has been successfully installed.
-
----
-
-## Getting Started
-
-The repository includes complete tutorial notebooks in the **`tutorials/`** directory that reproduce all analyses presented in the MINGL manuscript, including:
-
-- Border cell identification
-- Organizational interaction networks
-- Gradient and transition analyses
-- Organizational heterogeneity
-- Neighborhood resolution selection
-
-We recommend beginning with these tutorials before applying MINGL to your own spatial-omics datasets.
-
----
-
-## Package Structure
-
-The package is organized into three primary modules:
-
-| Module | Description |
-|---------|-------------|
-| `mingl.pp` | Preprocessing utilities for preparing spatial datasets |
-| `mingl.tl` | Core analysis tools for probability estimation, border identification, gradients, interaction networks, heterogeneity analysis, and neighborhood selection |
-| `mingl.pl` | Publication-quality plotting functions for visualizing MINGL analyses |
-
-Additional resources include:
-
-- **`tutorials/`** – Jupyter notebooks reproducing the manuscript analyses
-- **`tests/`** – Unit tests
-- **`docs/`** – Documentation and figures
-- **`tools/`** – Utility scripts used throughout the package
-
----
-
-## Dependencies
-
-MINGL automatically installs the required Python packages during installation.
-
-Core dependencies include:
-
-```
-anndata>=0.10,<0.13
-numpy>=1.26,<3
-pandas>=2.2,<3.0
-scipy>=1.12,<2
-scikit-learn>=1.4,<2
-matplotlib>=3.8,<4
-seaborn>=0.13,<0.14
-networkx>=3.2,<4
-tqdm>=4.66,<5
-session-info2
-```
-
----
-
-## Release Notes
-
-See the [changelog][].
-
-## Need Help?
-
-For installation questions, bug reports, or feature requests, please open an Issue on the GitHub repository:
-https://github.com/HickeyLab/Mingl/issues
+MIT, see `LICENSE`. Upstream (HickeyLab/Mingl) publishes under the same
+licence; this fork keeps it unchanged.
 
 ## Citation
 
-> t.b.a
+> t.b.a. (see the preprint above)
 
-[uv]: https://github.com/astral-sh/uv
-[scverse discourse]: https://discourse.scverse.org/
-[issue tracker]: https://github.com/HickeyLab/Mingl/issues
-[tests]: https://github.com/HickeyLab/Mingl/actions/workflows/test.yaml
-[documentation]: https://mingl.readthedocs.io
-[changelog]: https://mingl.readthedocs.io/en/latest/changelog.html
-[api documentation]: https://mingl.readthedocs.io/en/latest/api.html
-[pypi]: https://pypi.org/project/mingle-hl
+## Need help?
 
-### Repository Structure
-```text
-Mingl/
-├── src/
-│   └── mingl/
-│       ├── pl/                                # Plotting functions
-│       │   ├── cell_composition.py            # Cell type distributions throughout transition gradient
-│       │   ├── cnd.py                         # Compute delta values and plot spatial heterogeneity of groups
-│       │   ├── dpp.py                         # Summed and average delta values per patient
-│       │   ├── dv.py                          # Delta volcano plots of cell type enrichment/depletion in specific organization and groups
-│       │   ├── edges_pp.py                    # Positive neighborhood probability and count above threshold distributions
-│       │   ├── enrichment.py                  # Enrichment of cell types at transition border between two organizational units
-│       │   ├── gmm_plots.py                   # Catplot of region colored by assigned organizational classification
-│       │   ├── gvs.py                         # Cell type proportion heterogeneity across groups compared to global
-│       │   ├── plt_dv.py                      # Log2 fold abundance of cell types in one group compared to global
-│       │   ├── rnd.py                         # Region-specific delta values of spatial organization heterogeneity
-│       │   ├── spatial_location_reg.py        # Show border cells in relation to singly positive organizational unit cells
-│       │   ├── spatial_probability_map.py     # Catplot of region colored by MINGL probability 
-│       │   └── violin.py                      # Transition gradient clusters' probability ratio score distributions
-│       ├── pp/                                # Preprocessing tools
-│       │   └── preprocessing.py
-│       ├── tl/                                # Core analysis tools
-│       │   ├── ccd.py                         # Compute condition or group specific delta values
-│       │   ├── centroids.py                   # Calculate centroids of lower level labels at your desired hierarchical organization level
-│       │   ├── compute_proportions.py         # Compute cell type proportions of different groups/conditions
-│       │   ├── crd.py                         # Compute tissue region specific delta values
-│       │   ├── edges.py                       # Code to find positive memberships based on thresholds and categorize border cells
-│       │   ├── gb.py                          # Calculate how organization proportions change as you move through a specific transition gradient
-│       │   ├── gmm.py                         # CPU comparison of all cells' features to centroids and calculation of MINGL probabilities of organization membership
-│       │   ├── gmm_gpu.py                     # GPU accelerated version of gmm.py, requires CuPy
-│       │   ├── grad.py                        # Calculate probability ratio scores, define between a specific group compared to global
-│       │   ├── knn.py                         # K-nearest neighbors function without maximum distance threshold
-│       │   ├── knn2.py                        # K-nearest neighbors function with maximum distance threshold
-│       │   ├── n_neighbors.py                 # Loop through numbers of clusters for neighborhood analysis, compute log-likelihoods and cluster assignment probabilities
-│       │   ├── network_graphs.py              # Compute organization interaction maps
-│       │   └── utils_adata.py                 # Tools for maneuvering and working with Anndata structure
-│       └── __init__.py
-├── tutorials/                                 # Tutorial notebooks and code used to generate manuscript figures
-│   ├── fig2_intestine_neighborhood.ipynb     
-│   ├── fig2_intestine_tissueunit.ipynb
-│   ├── fig2_melanoma_neighborhood.ipynb
-│   ├── fig3_networks.ipynb
-│   ├── fig4_intestine_neighborhood.ipynb
-│   ├── fig4_intestine_community.ipynb
-│   ├── fig5_esophagus.ipynb
-│   └── fig6_intestine_n_neighborhoods.ipynb
-├── tools/                                     # Utility scripts
-│   ├── enrich_tutorial_annotations.py
-│   └── ...
-├── tests/                                     # Unit tests
-├── docs/                                      # Images and docs
-├── README.md
-└── pyproject.toml
+For installation questions, bug reports, or feature requests on the
+upstream package, open an issue at
+https://github.com/HickeyLab/Mingl/issues. Workflow-specific issues (this
+fork's `config/`, `workflow/`, or CI) belong in this fork.
