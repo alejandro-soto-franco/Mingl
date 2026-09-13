@@ -179,35 +179,81 @@ recorded outside this repository; see the "Differences from upstream"
 section for what those notebooks actually computed and could not be
 independently re-run against.
 
-### Real intestine results (fig2, fig3, fig4)
+### Real intestine results (fig2, fig3, fig4, fig6)
 
-`intestine_neighborhood`, `intestine_tissue_unit`, `intestine_community` and
-`intestine_networks` have all run on the real, confirmed-identity Dryad
-file (see "Data availability"). These are not bit-exact parity against the
-notebooks (see the row-count discussion above), but they are real
-computation on real data, not a synthetic stand-in:
+`intestine_neighborhood`, `intestine_tissue_unit`, `intestine_community`,
+`intestine_networks` and the `n_neighborhood` sweep have all run on the
+real, confirmed-identity Dryad file (see "Data availability"), on a
+uniformly-filtered, reconstructed cell universe (below), with a direct
+numeric comparison against the notebooks' own stored output, not just
+matching row counts or "plausible" results.
+
+**Reconstructing the notebooks' filter.** The notebooks' own stored output
+reports 2,512,002 cells; this file has 2,603,217. No column but
+`Tissue Unit` has any missing value anywhere in the file (checked
+directly), and dropping the 91,032 cells missing it leaves 2,512,185 -- 183
+away (0.007%) from the notebooks' figure, the closest reconstruction found
+(the exact remaining 183-cell gap stays unexplained; see "Data
+availability"). `intestine_filtered_source` applies that filter once,
+so every stage below scores the same 2,512,185 cells, rather than each
+stage silently filtering (or not) by whichever column it happens to need.
+Cross-checked against fig4's own stored per-region totals, independent of
+the reconstruction above: 4 of 5 spot-checked regions match exactly
+(B004_Ascending 21,232; B012_Sigmoid 51,593; B012_Trans 27,784; B008_Sigmoid
+43,783), one is off by 2 cells out of 30,545 (B004_Descending).
+
+**Centroid matrix: exact numeric match.** `fig2_intestine_tissue_unit`'s
+stored output has `centroid_Calculation`'s full 4x20 `Tissue Unit` x
+`Community` mean/std table (k=300); `intestine_tissue_unit` now keeps its
+own in `uns["neighborhood_centroids"]`. Every mean checked matches to
+4-5 significant figures (for example, Mucosa x Plasma Cell Enriched:
+82.852776 vs 82.851212; Submucosa x Stroma: 226.738037 vs 226.737946),
+with the residual fully consistent with the 183-cell filter difference
+above. Full comparison: `~/planning/Mingl/parity.md`.
 
 | Level | Cells scored | Groups | Border cells (≥2 memberships above 0.25) |
 |---|---|---|---|
-| Neighbourhood (`Cell Type` → `Neighborhood`, k=10) | 2,603,217 | 20 | 311,899 (12.0%) |
-| Community (`Neighborhood` → `Community`, k=100) | 2,603,217 | 10 | 189,559 (7.3%) |
-| Tissue unit (`Community` → `Tissue Unit`, k=300) | 2,512,185 | 4 (Mucosa, Submucosa, Muscularis mucosa, Muscularis externa) | 290,190 (11.5%) |
+| Neighbourhood (`Cell Type` → `Neighborhood`, k=10) | 2,512,185 | 20 | 291,489 (11.6%) |
+| Community (`Neighborhood` → `Community`, k=100) | 2,512,185 | 10 | 179,846 (7.2%) |
+| Tissue unit (`Community` → `Tissue Unit`, k=300) | 2,512,185 | 4 (Mucosa, Submucosa, Muscularis mucosa, Muscularis externa) | 290,190 (11.6%) |
 
 `intestine_networks` (fig3) built each level's top-15 neighbourhood-pair
 interaction graph from these; the strongest pairs are biologically
-sensible pairings the manuscript itself groups together, for example
-"Microvasculature ⟷ Macrovasculature" and "Innervated Smooth Muscle ⟷
-Smooth Muscle" at the neighbourhood level. Full output:
-`results/intestine/networks/summary.json`.
+sensible, for example "Microvasculature ⟷ Macrovasculature" and
+"Innervated Smooth Muscle ⟷ Smooth Muscle" at the neighbourhood level. No
+upstream stored edge-weight numbers exist to check this against (the
+notebook's own "Edge summary" output has nothing captured beneath its
+header), so this is real computation without an upstream number to
+validate it against, stated as such rather than left looking checked.
+Full output: `results/intestine/networks/summary.json`.
 
-fig6 (`n_neighborhood` sweep over cluster counts 1-50) stays out of scope
-this round: it reclusters all cells at up to 50 different cluster counts,
-each a KMeans fit plus a batched Gaussian-likelihood evaluation over 2.6M
-cells, exceeding this machine's 30-minute-per-computation limit at real
-scale; a smaller subset would also change what the sweep's own cluster-count
-selection (the notebook picked N=6, 17, 28) means. `tl/n_neighbors.py`'s
-functions remain unchanged and directly callable; a future session can add
-the rule once a feasible scale is chosen.
+fig4's own numeric outputs (a percentile-bin table, k-window exclusion
+diagnostics) come from `mingl_neighborhoods_scverse` (`tl/grad.py`), a
+materially different computation from the pipeline the three rules above
+share; wiring it up as a further rule was not attempted this round.
+
+**fig6.** Staged rather than skipped: `intestine_n_neighborhood_windows`
+computes the k=10 composition window once; `intestine_n_neighborhood_cluster`
+is one job per candidate cluster count `n`, defined across the notebook's
+full 1..50 sweep (`intestine_n_neighborhood_full_sweep`) so the DAG has a
+job per n regardless of which are requested, each independently well under
+the 30-minute-per-computation limit (each n reclusters the one cached
+window; wall time per n grows with n, from ~25 s at small n to a few
+minutes at n near 50 -- one KNN2 pass total, not one per n. Compared against
+the notebook's own selection (`fig6_intestine_n_neighborhood.md`: "Cluster
+4 from Probability Elbow N=6: 460505 cells ... Selected N=17: 209003 cells
+... Log-Likelihood Elbow N=28: 139182 cells"):
+
+| n | This run's closest cluster | Cells | Notebook's cluster | Cells | Match |
+|---|---|---|---|---|---|
+| 6 | cluster "4" | 446,765 | cluster 4 (probability elbow) | 460,505 | within 3.0% |
+
+n=17 and n=28 were still running at the time of writing (the full 1..50
+sweep continues unattended in the background; `results/intestine/
+n_neighborhood/n{17,28}.json` will exist once each finishes). Cluster IDs
+themselves are not expected to match (`MiniBatchKMeans` label assignment
+depends on mini-batch draw order, not just the seed), so this table
+compares by cell count, closest cluster to closest cluster, not by label.
 
 ## Differences from upstream
 
@@ -267,6 +313,32 @@ Bug fixes, each in its own commit with a regression test:
    `ValueError` whenever `cluster_col` contained integers (a common encoding for
    cell-type ids, and exactly what the SimulatedTransitions fixtures use).
    Both now cast to `str` first, matching KNN2's own convention.
+9. **`KNN2` and `Neighborhoods.k_windows` (`tl/grad.py`) broke on a
+   non-contiguous obs index**, found while running `intestine_tissue_unit`
+   on real data (missing-`Tissue Unit` rows dropped without resetting the
+   index): both mapped k-NN results, computed *positionally*, back to
+   `tissue.obs.index` *labels*, then used those labels as positions into a
+   separate, plain positional array. That is only correct when an AnnData's
+   obs index happens to already be a fresh `0..n-1` `RangeIndex`; any
+   caller who filters first (`dropna`, a boolean mask, ...) keeps the
+   original, now non-contiguous labels, which raised `IndexError` or
+   silently indexed the wrong row. Filtering an AnnData before calling
+   either function hits this for any caller, not just this workflow, so it
+   is fixed in the library: both now track true global positions throughout,
+   converting to labels only in the final, label-indexed output.
+10. **`centroid_Calculation` and `KNN2` broke on missing labels**, found
+    the same way: a cell missing `cluster_col`/`neighborhood_col` cannot
+    contribute a labelled feature count or be assigned to a named centroid
+    (`centroid_Calculation` now drops such rows first; a `NaN`
+    `neighborhood_col` value used to become a `NaN`-named centroid, which
+    crashed any code copying centroid names into new `.obs` columns --
+    `gpu_gmm_probability` does this natively -- when writing to h5ad). A
+    cell missing `region_key` cannot receive a spatial window at all
+    (`KNN2` now drops it); a categorical `region_key` can also list
+    unused categories after such a drop, and `groupby`'s default
+    `observed=False` still yielded an empty group for those while
+    `.unique()` excluded them, raising `"<region> is not in list"` (`KNN2`
+    now calls `.cat.remove_unused_categories()` after the drop).
 
 Intentional deviations, not bugs:
 
