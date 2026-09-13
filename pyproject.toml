@@ -100,7 +100,6 @@ include = [
 [tool.ruff]
 line-length = 120
 src = [ "src" ]
-extend-include = [ "*.ipynb" ]
 format.docstring-code-format = true
 lint.select = [
   "B",      # flake8-bugbear
@@ -130,9 +129,18 @@ lint.ignore = [
   "E731", # Do not assign a lambda expression, use a def -> lambda expression assignments are convenient
   "E741", # allow I, O, l as variable names -> I is the identity matrix
 ]
-lint.per-file-ignores."*/__init__.py" = [ "F401" ]
+lint.per-file-ignores."*/__init__.py" = [ "F401", "F403" ]
 lint.per-file-ignores."docs/*" = [ "I" ]
 lint.per-file-ignores."tests/*" = [ "D" ]
+# src/mingl/pl and src/mingl/tl predate this workflow conversion. The
+# workflow-spec bug fixes (see README's "Differences from upstream") touch
+# specific functions in a handful of tl/ files and each has a regression
+# test; sweeping the rest of these two packages for docstrings, broad
+# `except Exception:` clauses, relative imports and comprehension style
+# would mean rewriting logic no test protects, well beyond that fix list, so
+# it is left alone and these pre-existing conventions are not re-flagged.
+lint.per-file-ignores."src/mingl/pl/*" = [ "BLE001", "D101", "D102", "D103", "D200", "D205", "D301", "TID252", "B905", "B023", "C401", "C403", "C405", "C414", "F841" ]
+lint.per-file-ignores."src/mingl/tl/*" = [ "BLE001", "D101", "D102", "D103", "D200", "D205", "D301", "TID252", "B905", "B023", "C401", "C403", "C405", "C414" ]
 lint.pydocstyle.convention = "numpy"
 
 [tool.pytest]
@@ -159,5 +167,69 @@ skip = [
   "docs/changelog.md",
   "docs/references.bib",
   "docs/references.md",
-  "docs/notebooks/example.ipynb",
+  "docs/notebooks/example.md",
 ]
+
+[tool.pyrefly]
+project-includes = [ "src", "workflow", "tests" ]
+# gmm_gpu.py imports cupy unconditionally and is never imported by
+# mingl.tl.__init__ for exactly this reason (see README); this machine, and
+# CI, have no GPU or cupy install to check it against. pl/enrichment.py
+# predates this workflow conversion and is untouched by it; its
+# `not-iterable` errors trace to a pre-existing helper whose fix is outside
+# the confirmed-bug list this task covers (see README's
+# "Differences from upstream").
+project-excludes = [ "**/gmm_gpu.py", "**/pl/enrichment.py" ]
+python-version = "3.11"
+
+# pandas/anndata's overload-heavy, partly-untyped stubs make these
+# categories fire on almost every DataFrame construction, .loc/.obsm access
+# and AnnData assignment in this codebase -- not on a real type error. Left
+# at the default "error" severity they would drown out (and, per the counts
+# checked while wiring up this workflow, vastly outnumber) any signal from
+# the categories below, which stay at "error": undefined names, wrong
+# arities, missing imports.
+[tool.pyrefly.errors]
+no-matching-overload = "ignore"
+bad-argument-type = "ignore"
+bad-index = "ignore"
+missing-attribute = "ignore"
+unsupported-operation = "ignore"
+bad-assignment = "ignore"
+
+[tool.pixi.workspace]
+channels = [ "conda-forge", "bioconda" ]
+platforms = [ "linux-64" ]
+
+[tool.pixi.dependencies]
+python = ">=3.11,<3.15"
+anndata = ">=0.10,<0.13"
+numpy = ">=1.26,<3"
+pandas = ">=2.2,<3.0"
+scipy = ">=1.12,<2"
+scikit-learn = ">=1.4,<2"
+matplotlib = ">=3.8,<4"
+seaborn = ">=0.13,<0.14"
+networkx = ">=3.2,<4"
+tqdm = ">=4.66,<5"
+pytest = "*"
+snakemake-minimal = ">=8,<9"
+
+[tool.pixi.pypi-dependencies]
+mingle-hl = { path = ".", editable = true }
+session-info2 = "*"
+
+[tool.pixi.feature.lint.dependencies]
+ruff = "*"
+
+[tool.pixi.feature.lint.pypi-dependencies]
+pyrefly = "==1.0.0"
+
+[tool.pixi.environments]
+default = { features = [ "lint" ], solve-group = "default" }
+
+[tool.pixi.tasks]
+test = "pytest -q"
+lint = "ruff check src workflow tests && ruff format --check src workflow tests && pyrefly check"
+smoke = "snakemake --snakefile workflow/Snakefile --configfile config/config.yaml config/smoke.yaml --cores 6 --rerun-incomplete all"
+all = "snakemake --snakefile workflow/Snakefile --configfile config/config.yaml --cores 6 --rerun-incomplete all"
