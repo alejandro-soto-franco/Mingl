@@ -48,10 +48,26 @@ def centroid_Calculation(
           - obs: neighborhoods
           - var: centroid features (means/stds per cell type)
           - X: numeric matrix (n_neighborhoods x n_features)
+
+    Notes
+    -----
+    A cell missing `cluster_col` or `neighborhood_col` cannot contribute a
+    labelled feature count or be assigned to a named centroid, so such rows
+    are dropped before anything else runs (a real gap in practice: not every
+    cell carries every level of a hierarchical annotation). Left in, a NaN
+    `neighborhood_col` value becomes a NaN-named centroid, which downstream
+    code that copies centroid names into new columns -- as
+    :func:`mingl.tl.gmm_gpu.gpu_gmm_probability` does -- cannot write to an
+    h5ad file.
     """
+    n_before = adata.n_obs
+    adata = adata[adata.obs[[cluster_col, neighborhood_col]].notna().all(axis=1)].copy()
+    n_dropped = n_before - adata.n_obs
+    if n_dropped:
+        print(f"centroid_Calculation: dropped {n_dropped} cells missing {cluster_col!r}/{neighborhood_col!r}.")
+
     # get KNN windows
     windows = KNN2(adata, region_key=region_col, cluster_col=cluster_col)
-    print(windows)
     if k not in windows:
         raise ValueError(f"k={k} not in available ks from KNN: {list(windows.keys())}")
 

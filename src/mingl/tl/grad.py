@@ -69,7 +69,14 @@ class Neighborhoods:
         add = np.arange(m[1].shape[0]) * m[1].shape[1]
         sorted_indices = m[1].flatten()[args + add[:, None]]
         sorted_dists = m[0].flatten()[args + add[:, None]]
-        neighbors = tissue.index.values[sorted_indices].astype(np.int32)
+        # `sorted_indices` are positions within `tissue` (NearestNeighbors was
+        # fit positionally on tissue[[X, Y]].values); map to positions in
+        # `self.cells` (what `values` in k_windows is indexed by), not to
+        # `tissue.index` labels -- those coincide with position only when
+        # self.cells' index happens to be a fresh 0..n-1 RangeIndex. get_indexer
+        # gives each label's true position regardless of index contiguity.
+        global_positions = self.cells.index.get_indexer(tissue.index)
+        neighbors = global_positions[sorted_indices].astype(np.int32)
         end_time = time.time()
 
         print(

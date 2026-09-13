@@ -71,3 +71,62 @@ def test_knn2_raises_on_missing_columns():
     adata = ad.AnnData(X=np.zeros((1, 0), dtype=np.float32), obs=obs)
     with pytest.raises(KeyError):
         KNN2(adata, cluster_col="cell_type")
+
+
+def _make_wide_adata(n: int = 12) -> ad.AnnData:
+    """n cells on a line, one region, alternating types; contiguous 0..n-1 index."""
+    obs = pd.DataFrame(
+        {
+            "x": np.arange(n, dtype=np.float64),
+            "y": np.zeros(n),
+            "unique_region": ["R1"] * n,
+            "cell_type": ["A" if i % 2 == 0 else "B" for i in range(n)],
+        }
+    )
+    return ad.AnnData(X=np.zeros((n, 0), dtype=np.float32), obs=obs)
+
+
+def test_knn2_non_contiguous_index_matches_reset_index():
+    """A caller who filters an AnnData (dropna, boolean mask, ...) keeps the
+    original, now non-contiguous index labels by default. KNN2 must not
+    silently use those labels as positions into its internal value array."""
+    full = _make_wide_adata(12)
+    keep = [0, 1, 3, 4, 6, 7, 9, 10, 11]  # drop 2, 5, 8 -- index is now non-contiguous
+    filtered = full[keep].copy()
+    reindexed = filtered.copy()
+    reindexed.obs = reindexed.obs.reset_index(drop=True)
+
+    windows_non_contiguous = KNN2(filtered, ks=(3,))[3]
+    windows_reset = KNN2(reindexed, ks=(3,))[3]
+
+    np.testing.assert_array_equal(
+        windows_non_contiguous[["A", "B"]].to_numpy(),
+        windows_reset[["A", "B"]].to_numpy(),
+    )
+
+
+def test_knn2_drops_cells_with_missing_region():
+    n = 12
+    obs = pd.DataFrame(
+        {
+            "x": np.arange(n, dtype=np.float64),
+            "y": np.zeros(n),
+            "unique_region": ["R1"] * 3 + [np.nan] + ["R1"] * (n - 4),
+            "cell_type": ["A" if i % 2 == 0 else "B" for i in range(n)],
+        }
+    )
+    adata = ad.AnnData(X=np.zeros((n, 0), dtype=np.float32), obs=obs)
+
+    windows = KNN2(adata, ks=(3,))[3]
+
+    assert len(windows) == 11
+    assert 3 not in windows.index
+
+
+def test_knn2_handles_unused_region_categories():
+    adata = _make_wide_adata(12)
+    adata.obs["unique_region"] = pd.Categorical(adata.obs["unique_region"], categories=["R1", "R2 (never used)"])
+
+    windows = KNN2(adata, ks=(3,))[3]
+
+    assert len(windows) == 12

@@ -61,6 +61,24 @@ def KNN2(
     n_neighbors = max(ks)
 
     adata = adata.copy()
+
+    # A cell with no known region cannot receive a spatial window at all (it
+    # belongs to no tissue group), so it is dropped rather than left to break
+    # the reindex at the end of this function. A categorical region_key can
+    # also carry unused categories after a caller filters its AnnData (for
+    # example, after dropping the rows above): groupby's default
+    # observed=False yields an empty group for those, while
+    # adata.obs[region_key].unique() omits them, so the two disagreed about
+    # which regions exist. Both are handled once, here, rather than wherever
+    # region_key next gets grouped by.
+    region_series = adata.obs[region_key]
+    if region_series.isna().any():
+        n_before = adata.n_obs
+        adata = adata[region_series.notna()].copy()
+        print(f"KNN2: dropped {n_before - adata.n_obs} cells with missing {region_key!r}.")
+    if isinstance(adata.obs[region_key].dtype, pd.CategoricalDtype):
+        adata.obs[region_key] = adata.obs[region_key].cat.remove_unused_categories()
+
     if adata.obs.columns.has_duplicates:
         counts = {}
         new_cols = []
@@ -108,6 +126,7 @@ def KNN2(
             region = region.iloc[:, 0]
 
         mask = region.to_numpy() == tissue_name
+        global_positions = np.where(mask)[0]
         tissue = adata[mask].copy()  # avoid AnnData view machinery
 
         coords = tissue.obs[[x_key, y_key]].values
@@ -119,8 +138,16 @@ def KNN2(
         sorted_indices = neighbor_idx.flatten()[args + add[:, None]]
         sorted_dists = distances.flatten()[args + add[:, None]]
 
-        obs_index = np.asarray(tissue.obs.index.to_numpy())
-        neighbors = obs_index[sorted_indices]
+        # `sorted_indices` are positions within `tissue` (0..len(tissue)-1,
+        # since NearestNeighbors was fit positionally on `coords`). Map them
+        # to GLOBAL positions in `adata` (equivalently, in `values` below),
+        # not to `tissue.obs.index` labels: those only coincide with global
+        # position when adata.obs.index happens to be a fresh 0..n-1
+        # RangeIndex, which does not hold once a caller has filtered or
+        # reordered rows -- using labels there raised "index ... out of
+        # bounds" (or silently indexed the wrong row) for any AnnData whose
+        # index was not already contiguous from 0.
+        neighbors = global_positions[sorted_indices]
         return neighbors.astype(np.int32), sorted_dists
 
     tissue_chunks = [
